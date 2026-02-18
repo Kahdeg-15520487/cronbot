@@ -282,3 +282,8 @@ docker/volumes/
 # OS
 .DS_Store
 Thumbs.db
+
+# Agent build and test artifacts
+src/CronBot.Agent/dist/
+src/CronBot.Agent/test-state/
+src/CronBot.Agent/test-workspace/
