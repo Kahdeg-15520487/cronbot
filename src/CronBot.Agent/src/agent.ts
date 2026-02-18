@@ -1,8 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { v4 as uuidv4 } from 'uuid';
 import {
   AgentConfig,
-  AgentContext,
   AgentPhase,
   AgentStatus,
   AutonomyLevel,
@@ -200,13 +198,7 @@ export class Agent {
         tools,
       });
 
-      // Handle tool use during streaming
-      stream.on('contentBlockDelta', (event) => {
-        if (event.delta.type === 'text_delta') {
-          logger.debug({ text: event.delta.text }, 'Claude response');
-        }
-      });
-
+      // Wait for final message
       const message = await stream.finalMessage();
 
       // Process tool calls
@@ -447,7 +439,7 @@ class ApiClient {
   async get<T>(path: string): Promise<OperationResult<T>> {
     try {
       const response = await fetch(`${this.baseUrl}${path}`);
-      const data = await response.json();
+      const data = await response.json() as T;
       return { success: response.ok, data };
     } catch (error) {
       return { success: false, error: String(error) };
@@ -461,7 +453,7 @@ class ApiClient {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const data = await response.json();
+      const data = await response.json() as T;
       return { success: response.ok, data };
     } catch (error) {
       return { success: false, error: String(error) };
@@ -475,7 +467,7 @@ class ApiClient {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const data = await response.json();
+      const data = await response.json() as T;
       return { success: response.ok, data };
     } catch (error) {
       return { success: false, error: String(error) };

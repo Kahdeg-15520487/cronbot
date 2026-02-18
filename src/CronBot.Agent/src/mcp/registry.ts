@@ -105,7 +105,7 @@ export class McpRegistry {
   /**
    * Check if an operation needs approval based on autonomy level.
    */
-  private checkApprovalNeeded(toolName: string, args: Record<string, unknown>): { needsApproval: boolean; reason?: string } {
+  private checkApprovalNeeded(toolName: string, _args: Record<string, unknown>): { needsApproval: boolean; reason?: string } {
     // Tools that always require approval
     const securityCriticalTools = [
       'execute_command',

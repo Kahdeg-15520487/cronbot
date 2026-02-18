@@ -20,7 +20,9 @@
       "Bash(git init:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(./test.sh:*)",
+      "Bash(npm run build:*)"
     ]
   }
 }
