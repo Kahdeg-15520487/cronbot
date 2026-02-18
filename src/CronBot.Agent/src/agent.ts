@@ -99,12 +99,15 @@ export class Agent {
 
         if (!task) {
           // No task available, wait and retry
-          await this.stateManager.setPhase(AgentPhase.ReadingContext);
-          await this.sleep(5000);
+          this.status = AgentStatus.Idle;
+          await this.stateManager.setPhase(AgentPhase.Idle);
+          logger.debug('No tasks available, waiting...');
+          await this.sleep(30000); // Wait 30 seconds before checking again
           continue;
         }
 
         // Execute task
+        this.status = AgentStatus.Working;
         await this.executeTask(task);
 
       } catch (error) {

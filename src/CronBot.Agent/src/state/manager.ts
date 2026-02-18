@@ -78,9 +78,13 @@ export class StateManager {
    */
   async setPhase(phase: AgentPhase): Promise<void> {
     const previousPhase = this.context.phase;
-    this.context.phase = phase;
-    logger.info({ previousPhase, newPhase: phase }, 'Phase changed');
-    await this.saveContext();
+
+    // Only log if phase actually changes
+    if (previousPhase !== phase) {
+      this.context.phase = phase;
+      logger.info({ previousPhase, newPhase: phase }, 'Phase changed');
+      await this.saveContext();
+    }
   }
 
   /**

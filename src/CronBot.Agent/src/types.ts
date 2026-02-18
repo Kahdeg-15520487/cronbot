@@ -88,6 +88,7 @@ export interface AgentContext {
  */
 export enum AgentPhase {
   Initializing = 'initializing',
+  Idle = 'idle',
   ReadingContext = 'reading_context',
   Planning = 'planning',
   Executing = 'executing',

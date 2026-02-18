@@ -9,6 +9,69 @@ export const api = axios.create({
   },
 });
 
+// Enum mappings (API uses integers, frontend uses strings)
+export const TaskStatus = {
+  0: 'backlog',
+  1: 'sprint',
+  2: 'in_progress',
+  3: 'review',
+  4: 'blocked',
+  5: 'done',
+  6: 'cancelled',
+} as const;
+
+export const TaskType = {
+  0: 'task',
+  1: 'bug',
+  2: 'blocker',
+  3: 'idea',
+  4: 'epic',
+} as const;
+
+export const AgentStatus = {
+  0: 'idle',
+  1: 'working',
+  2: 'paused',
+  3: 'blocked',
+  4: 'error',
+  5: 'terminated',
+} as const;
+
+// Helper functions to convert API response
+export function mapTaskStatus(status: number | string): string {
+  if (typeof status === 'string') return status;
+  return TaskStatus[status as keyof typeof TaskStatus] || 'backlog';
+}
+
+export function mapTaskType(type: number | string): string {
+  if (typeof type === 'string') return type;
+  return TaskType[type as keyof typeof TaskType] || 'task';
+}
+
+export function mapAgentStatus(status: number | string): string {
+  if (typeof status === 'string') return status;
+  return AgentStatus[status as keyof typeof AgentStatus] || 'idle';
+}
+
+// Reverse mappings for sending to API
+export const TaskStatusToNumber: Record<string, number> = {
+  backlog: 0,
+  sprint: 1,
+  in_progress: 2,
+  review: 3,
+  blocked: 4,
+  done: 5,
+  cancelled: 6,
+};
+
+export const TaskTypeToNumber: Record<string, number> = {
+  task: 0,
+  bug: 1,
+  blocker: 2,
+  idea: 3,
+  epic: 4,
+};
+
 // Types
 export interface User {
   id: string;
@@ -54,6 +117,7 @@ export interface Task {
   type: string;
   status: string;
   sprintId?: string;
+  boardId?: string;
   storyPoints?: number;
   assigneeType?: string;
   assigneeId?: string;
@@ -80,6 +144,59 @@ export interface Agent {
   commitsMade: number;
 }
 
+// Raw API response types (with number enums)
+interface RawTask {
+  id: string;
+  projectId: string;
+  number: number;
+  title: string;
+  description?: string;
+  type: number | string;
+  status: number | string;
+  sprintId?: string;
+  boardId?: string;
+  storyPoints?: number;
+  assigneeType?: string;
+  assigneeId?: string;
+  gitBranch?: string;
+  gitPrUrl?: string;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+interface RawAgent {
+  id: string;
+  projectId: string;
+  currentTaskId?: string;
+  containerId?: string;
+  containerName?: string;
+  status: number | string;
+  statusMessage?: string;
+  cpuUsagePercent?: number;
+  memoryUsageMb?: number;
+  startedAt: string;
+  lastActivityAt?: string;
+  tasksCompleted: number;
+  commitsMade: number;
+}
+
+// Transform functions
+function transformTask(raw: RawTask): Task {
+  return {
+    ...raw,
+    type: mapTaskType(raw.type),
+    status: mapTaskStatus(raw.status),
+  };
+}
+
+function transformAgent(raw: RawAgent): Agent {
+  return {
+    ...raw,
+    status: mapAgentStatus(raw.status),
+  };
+}
+
 // API functions
 export const usersApi = {
   getAll: () => api.get<User[]>('/users'),
@@ -104,19 +221,61 @@ export const projectsApi = {
   create: (data: Partial<Project>) => api.post<Project>('/projects', data),
   update: (id: string, data: Partial<Project>) => api.patch<Project>(`/projects/${id}`, data),
   delete: (id: string) => api.delete(`/projects/${id}`),
-  getTasks: (id: string) => api.get<Task[]>(`/projects/${id}/tasks`),
-  getAgents: (id: string) => api.get<Agent[]>(`/projects/${id}/agents`),
-  createAgent: (id: string) => api.post<Agent>(`/projects/${id}/agents`),
+  getTasks: (id: string) => api.get<RawTask[]>(`/projects/${id}/tasks`).then(res => ({
+    ...res,
+    data: res.data.map(transformTask)
+  })),
+  getAgents: (id: string) => api.get<RawAgent[]>(`/projects/${id}/agents`).then(res => ({
+    ...res,
+    data: res.data.map(transformAgent)
+  })),
+  createAgent: (id: string) => api.post<RawAgent>(`/projects/${id}/agents`).then(res => ({
+    ...res,
+    data: transformAgent(res.data)
+  })),
 };
 
 export const tasksApi = {
   getAll: (params?: { projectId?: string; sprintId?: string; status?: string }) =>
-    api.get<Task[]>('/tasks', { params }),
-  get: (id: string) => api.get<Task>(`/tasks/${id}`),
-  create: (data: Partial<Task>) => api.post<Task>('/tasks', data),
-  createInProject: (projectId: string, data: Partial<Task>) =>
-    api.post<Task>(`/projects/${projectId}/tasks`, data),
-  update: (id: string, data: Partial<Task>) => api.patch<Task>(`/tasks/${id}`, data),
+    api.get<RawTask[]>('/tasks', { params }).then(res => ({
+      ...res,
+      data: res.data.map(transformTask)
+    })),
+  get: (id: string) => api.get<RawTask>(`/tasks/${id}`).then(res => ({
+    ...res,
+    data: transformTask(res.data)
+  })),
+  create: (data: Partial<Task>) => {
+    const payload = {
+      ...data,
+      type: data.type ? TaskTypeToNumber[data.type] : 0,
+      status: data.status ? TaskStatusToNumber[data.status] : 0,
+    };
+    return api.post<RawTask>('/tasks', payload).then(res => ({
+      ...res,
+      data: transformTask(res.data)
+    }));
+  },
+  createInProject: (projectId: string, data: Partial<Task>) => {
+    const payload = {
+      ...data,
+      type: data.type ? TaskTypeToNumber[data.type] : 0,
+      status: data.status ? TaskStatusToNumber[data.status] : 0,
+    };
+    return api.post<RawTask>(`/projects/${projectId}/tasks`, payload).then(res => ({
+      ...res,
+      data: transformTask(res.data)
+    }));
+  },
+  update: (id: string, data: Partial<Task>) => {
+    const payload: Record<string, unknown> = { ...data };
+    if (data.type) payload.type = TaskTypeToNumber[data.type];
+    if (data.status) payload.status = TaskStatusToNumber[data.status];
+    return api.patch<RawTask>(`/tasks/${id}`, payload).then(res => ({
+      ...res,
+      data: transformTask(res.data)
+    }));
+  },
   delete: (id: string) => api.delete(`/tasks/${id}`),
   getComments: (id: string) => api.get(`/tasks/${id}/comments`),
   addComment: (id: string, content: string) => api.post(`/tasks/${id}/comments`, { content }),
@@ -124,7 +283,16 @@ export const tasksApi = {
 
 export const agentsApi = {
   getAll: (params?: { projectId?: string; status?: string }) =>
-    api.get<Agent[]>('/agents', { params }),
-  get: (id: string) => api.get<Agent>(`/agents/${id}`),
-  terminate: (id: string) => api.post<Agent>(`/agents/${id}/terminate`),
+    api.get<RawAgent[]>('/agents', { params }).then(res => ({
+      ...res,
+      data: res.data.map(transformAgent)
+    })),
+  get: (id: string) => api.get<RawAgent>(`/agents/${id}`).then(res => ({
+    ...res,
+    data: transformAgent(res.data)
+  })),
+  terminate: (id: string) => api.post<RawAgent>(`/agents/${id}/terminate`).then(res => ({
+    ...res,
+    data: transformAgent(res.data)
+  })),
 };
