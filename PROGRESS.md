@@ -87,7 +87,7 @@ This document tracks the implementation progress of CronBot, an autonomous AI-po
 |------|--------|-------|
 | MCP Filesystem | ⏳ | read/write/search/list |
 | MCP Git | ⏳ | branch/commit/pr/merge |
-| MCP Kanban | ⏳ | task management |
+| MCP Kanban | ✅ | Built-in tools: list/create/update/move tasks, comments, sprints |
 | MCP Runner | ⏳ | execute/test/preview/screenshot |
 | MCP Search | ⏳ | SearXNG integration |
 | MCP Permission | ⏳ | check/grant permissions |
@@ -165,10 +165,10 @@ This document tracks the implementation progress of CronBot, an autonomous AI-po
 | Task | Status | Notes |
 |------|--------|-------|
 | Next.js project setup | ✅ | App router, TypeScript, Tailwind |
-| API client | ✅ | Axios with typed endpoints |
+| API client | ✅ | Axios with typed endpoints, enum mappings |
 | Dashboard page | ✅ | Real-time stats, recent tasks, active agents |
 | Kanban board | ✅ | Drag-and-drop task cards |
-| Project list page | ✅ | Grid view with create modal |
+| Project list page | ✅ | Grid view with multi-step onboarding wizard |
 | Project detail page | ✅ | Kanban board, stats, agents, spawn agent |
 | Sidebar navigation | ✅ | Active state, user menu |
 | React Query setup | ✅ | Data fetching, caching |
@@ -178,6 +178,7 @@ This document tracks the implementation progress of CronBot, an autonomous AI-po
 | Agents page | ✅ | Agent grid, status cards, spawn modal |
 | Team page | ✅ | Team management, projects |
 | Settings page | ✅ | Profile, notifications, security, integrations |
+| Project onboarding | ✅ | Multi-step wizard with initial task creation |
 | Authentication flow | ⏳ | Authentik OIDC |
 | Chat interface | ⏳ | Agent communication |
 
@@ -280,10 +281,10 @@ This document tracks the implementation progress of CronBot, an autonomous AI-po
 | 2. REST Controllers | █████░░░░░ 50% |
 | 3. Authentication | ░░░░░░░░░░ 0% |
 | 4. Agent System | ██████████ 100% |
-| 5. MCP Tools | ░░░░░░░░░░ 0% |
+| 5. MCP Tools | ███░░░░░░░ 30% |
 | 6. Skills System | ██████░░░░ 60% |
-| 11. Web UI | █████████░ 90% |
+| 11. Web UI | █████████░ 95% |
 | 17. Docker Compose | ██████████ 100% |
 | 7-10, 12-16, 18. Services | ░░░░░░░░░░ 0% |
 
-**Overall Progress: ~40%**
+**Overall Progress: ~45%**
