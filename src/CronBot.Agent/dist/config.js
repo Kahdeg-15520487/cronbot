@@ -1,17 +1,10 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.defaultConfig = void 0;
-exports.loadConfig = loadConfig;
-const dotenv_1 = __importDefault(require("dotenv"));
-const types_js_1 = require("./types.js");
-dotenv_1.default.config();
+import dotenv from 'dotenv';
+import { AutonomyLevel } from './types.js';
+dotenv.config();
 /**
  * Load agent configuration from environment variables.
  */
-function loadConfig() {
+export function loadConfig() {
     return {
         projectId: getRequiredEnv('PROJECT_ID'),
         agentId: getRequiredEnv('AGENT_ID'),
@@ -44,7 +37,7 @@ function loadRetryConfig() {
  */
 function parseAutonomyLevel(value) {
     if (value === undefined) {
-        return types_js_1.AutonomyLevel.Balanced; // Default
+        return AutonomyLevel.Balanced; // Default
     }
     const num = parseInt(value, 10);
     if (!isNaN(num) && num >= 0 && num <= 3) {
@@ -53,17 +46,17 @@ function parseAutonomyLevel(value) {
     switch (value.toLowerCase()) {
         case 'reactive':
         case 'readonly':
-            return types_js_1.AutonomyLevel.Reactive;
+            return AutonomyLevel.Reactive;
         case 'cautious':
-            return types_js_1.AutonomyLevel.Cautious;
+            return AutonomyLevel.Cautious;
         case 'balanced':
         case 'default':
-            return types_js_1.AutonomyLevel.Balanced;
+            return AutonomyLevel.Balanced;
         case 'full':
         case 'autonomous':
-            return types_js_1.AutonomyLevel.FullAutonomy;
+            return AutonomyLevel.FullAutonomy;
         default:
-            return types_js_1.AutonomyLevel.Balanced;
+            return AutonomyLevel.Balanced;
     }
 }
 /**
@@ -79,10 +72,10 @@ function getRequiredEnv(name) {
 /**
  * Default agent configuration for development.
  */
-exports.defaultConfig = {
+export const defaultConfig = {
     projectId: '00000000-0000-0000-0000-000000000001',
     agentId: '00000000-0000-0000-0000-000000000001',
-    autonomyLevel: types_js_1.AutonomyLevel.Balanced,
+    autonomyLevel: AutonomyLevel.Balanced,
     mcpRegistryUrl: 'http://localhost:5000/api/mcp/registry',
     kanbanUrl: 'http://localhost:5000/api',
     gitUrl: 'http://localhost:3000',

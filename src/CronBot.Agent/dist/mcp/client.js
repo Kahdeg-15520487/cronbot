@@ -1,15 +1,12 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.McpClient = void 0;
-const index_js_1 = require("@modelcontextprotocol/sdk/client/index.js");
-const stdio_js_1 = require("@modelcontextprotocol/sdk/client/stdio.js");
-const sse_js_1 = require("@modelcontextprotocol/sdk/client/sse.js");
-const logger_js_1 = require("../logger.js");
-const logger = (0, logger_js_1.createLogger)('mcp-client');
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import { createLogger } from '../logger.js';
+const logger = createLogger('mcp-client');
 /**
  * MCP Client wrapper for connecting to MCP servers.
  */
-class McpClient {
+export class McpClient {
     client = null;
     transport = null;
     config;
@@ -62,7 +59,7 @@ class McpClient {
         if (!this.config.command) {
             throw new Error('Command is required for stdio transport');
         }
-        this.transport = new stdio_js_1.StdioClientTransport({
+        this.transport = new StdioClientTransport({
             command: this.config.command,
             args: this.config.args || [],
             env: {
@@ -70,7 +67,7 @@ class McpClient {
                 ...this.config.env,
             },
         });
-        this.client = new index_js_1.Client({
+        this.client = new Client({
             name: 'cronbot-agent',
             version: '1.0.0',
         }, {
@@ -85,8 +82,8 @@ class McpClient {
         if (!this.config.url) {
             throw new Error('URL is required for SSE transport');
         }
-        this.transport = new sse_js_1.SSEClientTransport(new URL(this.config.url));
-        this.client = new index_js_1.Client({
+        this.transport = new SSEClientTransport(new URL(this.config.url));
+        this.client = new Client({
             name: 'cronbot-agent',
             version: '1.0.0',
         }, {
@@ -240,5 +237,4 @@ class McpClient {
         return this.connected;
     }
 }
-exports.McpClient = McpClient;
 //# sourceMappingURL=client.js.map

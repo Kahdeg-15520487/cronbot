@@ -1,6 +1,3 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.BlockerType = exports.AgentPhase = exports.TaskType = exports.TaskStatus = exports.AgentStatus = exports.AutonomyLevel = void 0;
 /**
  * Autonomy levels for agent behavior control.
  * - Level 0: Reactive - Read-only, responds when spoken to
@@ -8,17 +5,17 @@ exports.BlockerType = exports.AgentPhase = exports.TaskType = exports.TaskStatus
  * - Level 2: Balanced - Autonomous on tasks, approval on major changes
  * - Level 3: Full Autonomy - Full sandbox autonomy, only security-critical ops need approval
  */
-var AutonomyLevel;
+export var AutonomyLevel;
 (function (AutonomyLevel) {
     AutonomyLevel[AutonomyLevel["Reactive"] = 0] = "Reactive";
     AutonomyLevel[AutonomyLevel["Cautious"] = 1] = "Cautious";
     AutonomyLevel[AutonomyLevel["Balanced"] = 2] = "Balanced";
     AutonomyLevel[AutonomyLevel["FullAutonomy"] = 3] = "FullAutonomy";
-})(AutonomyLevel || (exports.AutonomyLevel = AutonomyLevel = {}));
+})(AutonomyLevel || (AutonomyLevel = {}));
 /**
  * Agent status enum matching the database.
  */
-var AgentStatus;
+export var AgentStatus;
 (function (AgentStatus) {
     AgentStatus["Idle"] = "idle";
     AgentStatus["Working"] = "working";
@@ -26,11 +23,11 @@ var AgentStatus;
     AgentStatus["Blocked"] = "blocked";
     AgentStatus["Error"] = "error";
     AgentStatus["Terminated"] = "terminated";
-})(AgentStatus || (exports.AgentStatus = AgentStatus = {}));
+})(AgentStatus || (AgentStatus = {}));
 /**
  * Task status enum matching the database.
  */
-var TaskStatus;
+export var TaskStatus;
 (function (TaskStatus) {
     TaskStatus["Backlog"] = "backlog";
     TaskStatus["Sprint"] = "sprint";
@@ -39,22 +36,22 @@ var TaskStatus;
     TaskStatus["Blocked"] = "blocked";
     TaskStatus["Done"] = "done";
     TaskStatus["Cancelled"] = "cancelled";
-})(TaskStatus || (exports.TaskStatus = TaskStatus = {}));
+})(TaskStatus || (TaskStatus = {}));
 /**
  * Task type enum.
  */
-var TaskType;
+export var TaskType;
 (function (TaskType) {
     TaskType["Task"] = "task";
     TaskType["Bug"] = "bug";
     TaskType["Blocker"] = "blocker";
     TaskType["Idea"] = "idea";
     TaskType["Epic"] = "epic";
-})(TaskType || (exports.TaskType = TaskType = {}));
+})(TaskType || (TaskType = {}));
 /**
  * Phases of agent operation.
  */
-var AgentPhase;
+export var AgentPhase;
 (function (AgentPhase) {
     AgentPhase["Initializing"] = "initializing";
     AgentPhase["ReadingContext"] = "reading_context";
@@ -66,11 +63,11 @@ var AgentPhase;
     AgentPhase["Blocked"] = "blocked";
     AgentPhase["Completed"] = "completed";
     AgentPhase["Error"] = "error";
-})(AgentPhase || (exports.AgentPhase = AgentPhase = {}));
+})(AgentPhase || (AgentPhase = {}));
 /**
  * Types of blockers that can be detected.
  */
-var BlockerType;
+export var BlockerType;
 (function (BlockerType) {
     BlockerType["CodeLoop"] = "code_loop";
     BlockerType["VerificationLoop"] = "verification_loop";
@@ -78,5 +75,5 @@ var BlockerType;
     BlockerType["AgentStuck"] = "agent_stuck";
     BlockerType["DependencyIssue"] = "dependency_issue";
     BlockerType["ScopeCreep"] = "scope_creep";
-})(BlockerType || (exports.BlockerType = BlockerType = {}));
+})(BlockerType || (BlockerType = {}));
 //# sourceMappingURL=types.js.map

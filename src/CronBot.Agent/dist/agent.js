@@ -1,35 +1,29 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.Agent = void 0;
-const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
-const types_js_1 = require("./types.js");
-const manager_js_1 = require("./state/manager.js");
-const registry_js_1 = require("./mcp/registry.js");
-const executor_js_1 = require("./skills/executor.js");
-const logger_js_1 = require("./logger.js");
-const logger = (0, logger_js_1.createLogger)('agent');
+import Anthropic from '@anthropic-ai/sdk';
+import { AgentPhase, AgentStatus, AutonomyLevel, } from './types.js';
+import { StateManager } from './state/manager.js';
+import { McpRegistry } from './mcp/registry.js';
+import { SkillExecutor } from './skills/executor.js';
+import { createLogger } from './logger.js';
+const logger = createLogger('agent');
 /**
  * Main agent class that orchestrates task execution.
  */
-class Agent {
+export class Agent {
     config;
     stateManager;
     mcpRegistry;
     skillExecutor;
     anthropic;
-    status = types_js_1.AgentStatus.Idle;
+    status = AgentStatus.Idle;
     currentTask = null;
     shouldStop = false;
     apiClient;
     constructor(config) {
         this.config = config;
-        this.stateManager = new manager_js_1.StateManager(config.statePath);
-        this.mcpRegistry = new registry_js_1.McpRegistry(config.autonomyLevel);
-        this.skillExecutor = new executor_js_1.SkillExecutor(config.skillsPath, config.workspacePath);
-        this.anthropic = new sdk_1.default({
+        this.stateManager = new StateManager(config.statePath);
+        this.mcpRegistry = new McpRegistry(config.autonomyLevel);
+        this.skillExecutor = new SkillExecutor(config.skillsPath, config.workspacePath);
+        this.anthropic = new Anthropic({
             apiKey: config.anthropicApiKey,
             baseURL: config.anthropicBaseUrl,
         });
@@ -51,7 +45,7 @@ class Agent {
         if (checkpoint) {
             logger.info({ checkpointId: checkpoint.id }, 'Restoring from checkpoint');
         }
-        await this.stateManager.setPhase(types_js_1.AgentPhase.ReadingContext);
+        await this.stateManager.setPhase(AgentPhase.ReadingContext);
         logger.info('Agent initialized successfully');
     }
     /**
@@ -68,7 +62,7 @@ class Agent {
     async start() {
         logger.info('Starting agent main loop');
         this.shouldStop = false;
-        this.status = types_js_1.AgentStatus.Working;
+        this.status = AgentStatus.Working;
         while (!this.shouldStop) {
             try {
                 // Check for blockers
@@ -81,7 +75,7 @@ class Agent {
                 const task = await this.getNextTask();
                 if (!task) {
                     // No task available, wait and retry
-                    await this.stateManager.setPhase(types_js_1.AgentPhase.ReadingContext);
+                    await this.stateManager.setPhase(AgentPhase.ReadingContext);
                     await this.sleep(5000);
                     continue;
                 }
@@ -91,15 +85,15 @@ class Agent {
             catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 logger.error({ error: message }, 'Error in main loop');
-                this.status = types_js_1.AgentStatus.Error;
+                this.status = AgentStatus.Error;
                 // Create checkpoint for recovery
                 await this.stateManager.createCheckpoint();
                 // Wait before retrying
                 await this.sleep(10000);
-                this.status = types_js_1.AgentStatus.Working;
+                this.status = AgentStatus.Working;
             }
         }
-        this.status = types_js_1.AgentStatus.Terminated;
+        this.status = AgentStatus.Terminated;
         logger.info('Agent stopped');
     }
     /**
@@ -135,7 +129,7 @@ class Agent {
      */
     async executeTask(task) {
         logger.info({ taskId: task.id, title: task.title }, 'Executing task');
-        await this.stateManager.setPhase(types_js_1.AgentPhase.Planning);
+        await this.stateManager.setPhase(AgentPhase.Planning);
         await this.stateManager.recordDecision(`Started task: ${task.title}`, undefined, 5);
         // Update task status to in_progress
         await this.apiClient.patch(`/tasks/${task.id}`, { status: 'in_progress' });
@@ -145,7 +139,7 @@ class Agent {
         const context = this.buildTaskContext(task);
         // Get available tools
         const tools = this.buildClaudeTools();
-        await this.stateManager.setPhase(types_js_1.AgentPhase.Executing);
+        await this.stateManager.setPhase(AgentPhase.Executing);
         try {
             // Stream response from Claude
             const stream = this.anthropic.messages.stream({
@@ -165,7 +159,7 @@ class Agent {
             // Process tool calls
             await this.processToolCalls(message);
             // Mark task as complete
-            await this.stateManager.setPhase(types_js_1.AgentPhase.Verifying);
+            await this.stateManager.setPhase(AgentPhase.Verifying);
             await this.stateManager.recordDecision(`Completed task: ${task.title}`, undefined, 7);
             // Update task status
             await this.apiClient.patch(`/tasks/${task.id}`, { status: 'done' });
@@ -244,13 +238,13 @@ Please complete this task. Start by creating a plan, then execute it step by ste
      */
     getAutonomyDescription() {
         switch (this.config.autonomyLevel) {
-            case types_js_1.AutonomyLevel.Reactive:
+            case AutonomyLevel.Reactive:
                 return 'Read-only, responds when spoken to';
-            case types_js_1.AutonomyLevel.Cautious:
+            case AutonomyLevel.Cautious:
                 return 'Read/analyze, plans before executing, approval on writes';
-            case types_js_1.AutonomyLevel.Balanced:
+            case AutonomyLevel.Balanced:
                 return 'Autonomous on tasks, approval on major changes';
-            case types_js_1.AutonomyLevel.FullAutonomy:
+            case AutonomyLevel.FullAutonomy:
                 return 'Full sandbox autonomy, only security-critical ops need approval';
             default:
                 return 'Unknown';
@@ -324,8 +318,8 @@ Please complete this task. Start by creating a plan, then execute it step by ste
      */
     async handleBlocker(blocker) {
         logger.warn({ blocker }, 'Blocker detected');
-        this.status = types_js_1.AgentStatus.Blocked;
-        await this.stateManager.setPhase(types_js_1.AgentPhase.Blocked);
+        this.status = AgentStatus.Blocked;
+        await this.stateManager.setPhase(AgentPhase.Blocked);
         // Report blocker to API
         await this.apiClient.post(`/agents/${this.config.agentId}/blockers`, {
             type: blocker.type,
@@ -337,7 +331,7 @@ Please complete this task. Start by creating a plan, then execute it step by ste
         await this.sleep(30000);
         // Reset failure counters and retry
         this.stateManager.resetFailureCounters();
-        this.status = types_js_1.AgentStatus.Working;
+        this.status = AgentStatus.Working;
     }
     /**
      * Get current agent status.
@@ -358,7 +352,6 @@ Please complete this task. Start by creating a plan, then execute it step by ste
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 }
-exports.Agent = Agent;
 /**
  * Simple API client for communicating with CronBot services.
  */

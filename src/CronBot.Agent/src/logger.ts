@@ -3,7 +3,7 @@ import pino from 'pino';
 /**
  * Logger instance for the agent.
  */
-export const logger = pino({
+export const logger = pino.default({
   level: process.env.LOG_LEVEL || 'info',
   transport: {
     target: 'pino-pretty',

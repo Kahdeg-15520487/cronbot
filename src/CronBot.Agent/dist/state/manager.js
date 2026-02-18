@@ -1,19 +1,13 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.StateManager = void 0;
-const promises_1 = __importDefault(require("fs/promises"));
-const path_1 = __importDefault(require("path"));
-const uuid_1 = require("uuid");
-const types_js_1 = require("../types.js");
-const logger_js_1 = require("../logger.js");
-const logger = (0, logger_js_1.createLogger)('state');
+import fs from 'fs/promises';
+import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
+import { AgentPhase, BlockerType } from '../types.js';
+import { createLogger } from '../logger.js';
+const logger = createLogger('state');
 /**
  * State manager for agent context persistence.
  */
-class StateManager {
+export class StateManager {
     statePath;
     contextPath;
     checkpointsPath;
@@ -25,8 +19,8 @@ class StateManager {
     toolFailureCount = new Map();
     constructor(statePath) {
         this.statePath = statePath;
-        this.contextPath = path_1.default.join(statePath, 'context.json');
-        this.checkpointsPath = path_1.default.join(statePath, 'checkpoints');
+        this.contextPath = path.join(statePath, 'context.json');
+        this.checkpointsPath = path.join(statePath, 'checkpoints');
         this.context = this.createDefaultContext();
     }
     /**
@@ -34,7 +28,7 @@ class StateManager {
      */
     createDefaultContext() {
         return {
-            phase: types_js_1.AgentPhase.Initializing,
+            phase: AgentPhase.Initializing,
             activeFiles: [],
             recentDecisions: [],
             tokenCount: 0,
@@ -45,8 +39,8 @@ class StateManager {
      * Initialize state manager.
      */
     async initialize() {
-        await promises_1.default.mkdir(this.statePath, { recursive: true });
-        await promises_1.default.mkdir(this.checkpointsPath, { recursive: true });
+        await fs.mkdir(this.statePath, { recursive: true });
+        await fs.mkdir(this.checkpointsPath, { recursive: true });
         try {
             const savedContext = await this.loadContext();
             if (savedContext) {
@@ -145,14 +139,14 @@ class StateManager {
      */
     async createCheckpoint(lastOperation) {
         const checkpoint = {
-            id: (0, uuid_1.v4)(),
+            id: uuidv4(),
             timestamp: new Date().toISOString(),
             phase: this.context.phase,
             context: { ...this.context },
             lastOperation: lastOperation,
         };
-        const checkpointPath = path_1.default.join(this.checkpointsPath, `${checkpoint.id}.json`);
-        await promises_1.default.writeFile(checkpointPath, JSON.stringify(checkpoint, null, 2));
+        const checkpointPath = path.join(this.checkpointsPath, `${checkpoint.id}.json`);
+        await fs.writeFile(checkpointPath, JSON.stringify(checkpoint, null, 2));
         // Clean up old checkpoints
         await this.cleanupOldCheckpoints();
         logger.info({ checkpointId: checkpoint.id, phase: checkpoint.phase }, 'Checkpoint created');
@@ -163,8 +157,8 @@ class StateManager {
      */
     async restoreCheckpoint(checkpointId) {
         try {
-            const checkpointPath = path_1.default.join(this.checkpointsPath, `${checkpointId}.json`);
-            const data = await promises_1.default.readFile(checkpointPath, 'utf-8');
+            const checkpointPath = path.join(this.checkpointsPath, `${checkpointId}.json`);
+            const data = await fs.readFile(checkpointPath, 'utf-8');
             const checkpoint = JSON.parse(data);
             this.context = checkpoint.context;
             await this.saveContext();
@@ -181,7 +175,7 @@ class StateManager {
      */
     async getLatestCheckpoint() {
         try {
-            const files = await promises_1.default.readdir(this.checkpointsPath);
+            const files = await fs.readdir(this.checkpointsPath);
             const checkpoints = files
                 .filter(f => f.endsWith('.json'))
                 .map(f => f.replace('.json', ''))
@@ -190,8 +184,8 @@ class StateManager {
             if (checkpoints.length === 0) {
                 return null;
             }
-            const latestPath = path_1.default.join(this.checkpointsPath, `${checkpoints[0]}.json`);
-            const data = await promises_1.default.readFile(latestPath, 'utf-8');
+            const latestPath = path.join(this.checkpointsPath, `${checkpoints[0]}.json`);
+            const data = await fs.readFile(latestPath, 'utf-8');
             return JSON.parse(data);
         }
         catch (error) {
@@ -222,7 +216,7 @@ class StateManager {
                 if (last4[0] === last4[2] && last4[1] === last4[3] && last4[0] !== last4[1]) {
                     return {
                         detected: true,
-                        type: types_js_1.BlockerType.CodeLoop,
+                        type: BlockerType.CodeLoop,
                         severity: 'high',
                         description: `File ${filePath} is being changed back and forth between two states`,
                         suggestedAction: 'Review the conflicting requirements and make a definitive decision',
@@ -257,7 +251,7 @@ class StateManager {
             if (allFailed && sameError) {
                 return {
                     detected: true,
-                    type: types_js_1.BlockerType.VerificationLoop,
+                    type: BlockerType.VerificationLoop,
                     severity: 'high',
                     description: `Verification repeatedly failing with same error: ${recentVerifications[0].message}`,
                     suggestedAction: 'Try a different approach or escalate for human assistance',
@@ -281,7 +275,7 @@ class StateManager {
             if (count >= 3) {
                 return {
                     detected: true,
-                    type: types_js_1.BlockerType.ToolFailure,
+                    type: BlockerType.ToolFailure,
                     severity: 'medium',
                     description: `Tool ${toolName} has failed ${count} times`,
                     suggestedAction: 'Check tool configuration or try alternative approach',
@@ -316,14 +310,14 @@ class StateManager {
      * Save context to file.
      */
     async saveContext() {
-        await promises_1.default.writeFile(this.contextPath, JSON.stringify(this.context, null, 2));
+        await fs.writeFile(this.contextPath, JSON.stringify(this.context, null, 2));
     }
     /**
      * Load context from file.
      */
     async loadContext() {
         try {
-            const data = await promises_1.default.readFile(this.contextPath, 'utf-8');
+            const data = await fs.readFile(this.contextPath, 'utf-8');
             return JSON.parse(data);
         }
         catch {
@@ -334,14 +328,14 @@ class StateManager {
      * Clean up old checkpoints.
      */
     async cleanupOldCheckpoints() {
-        const files = await promises_1.default.readdir(this.checkpointsPath);
+        const files = await fs.readdir(this.checkpointsPath);
         const checkpoints = files
             .filter(f => f.endsWith('.json'))
             .sort();
         while (checkpoints.length > this.maxCheckpoints) {
             const oldest = checkpoints.shift();
             if (oldest) {
-                await promises_1.default.unlink(path_1.default.join(this.checkpointsPath, oldest));
+                await fs.unlink(path.join(this.checkpointsPath, oldest));
             }
         }
     }
@@ -358,5 +352,4 @@ class StateManager {
         return hash.toString(16);
     }
 }
-exports.StateManager = StateManager;
 //# sourceMappingURL=manager.js.map

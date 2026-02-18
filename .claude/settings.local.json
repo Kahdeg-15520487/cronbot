@@ -22,7 +22,9 @@
       "Bash(git commit:*)",
       "Bash(pkill:*)",
       "Bash(./test.sh:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(node dist/index.js:*)"
     ]
   }
 }

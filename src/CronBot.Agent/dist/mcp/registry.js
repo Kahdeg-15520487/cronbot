@@ -1,14 +1,11 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.McpRegistry = void 0;
-const client_js_1 = require("./client.js");
-const types_js_1 = require("../types.js");
-const logger_js_1 = require("../logger.js");
-const logger = (0, logger_js_1.createLogger)('mcp-registry');
+import { McpClient } from './client.js';
+import { AutonomyLevel } from '../types.js';
+import { createLogger } from '../logger.js';
+const logger = createLogger('mcp-registry');
 /**
  * Registry for managing MCP server connections.
  */
-class McpRegistry {
+export class McpRegistry {
     clients = new Map();
     autonomyLevel;
     pendingApprovals = new Map();
@@ -23,7 +20,7 @@ class McpRegistry {
             logger.warn({ server: name }, 'Server already registered');
             return { success: true };
         }
-        const client = new client_js_1.McpClient(config);
+        const client = new McpClient(config);
         const result = await client.connect();
         if (result.success) {
             this.clients.set(name, client);
@@ -112,7 +109,7 @@ class McpRegistry {
             'delete_branch',
         ];
         if (securityCriticalTools.includes(toolName)) {
-            if (this.autonomyLevel < types_js_1.AutonomyLevel.FullAutonomy) {
+            if (this.autonomyLevel < AutonomyLevel.FullAutonomy) {
                 return {
                     needsApproval: true,
                     reason: `Security-critical operation '${toolName}' requires approval`,
@@ -120,7 +117,7 @@ class McpRegistry {
             }
         }
         if (writeTools.includes(toolName)) {
-            if (this.autonomyLevel < types_js_1.AutonomyLevel.Balanced) {
+            if (this.autonomyLevel < AutonomyLevel.Balanced) {
                 return {
                     needsApproval: true,
                     reason: `Write operation '${toolName}' requires approval at autonomy level ${this.autonomyLevel}`,
@@ -241,5 +238,4 @@ class McpRegistry {
         logger.info({ level }, 'Autonomy level updated');
     }
 }
-exports.McpRegistry = McpRegistry;
 //# sourceMappingURL=registry.js.map

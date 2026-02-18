@@ -2,7 +2,7 @@ import pino from 'pino';
 /**
  * Logger instance for the agent.
  */
-export declare const logger: import("pino").Logger<never>;
+export declare const logger: pino.Logger<never>;
 /**
  * Create a child logger with context.
  */
