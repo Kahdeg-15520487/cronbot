@@ -22,8 +22,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install Node.js dependencies
-RUN npm install --only=production
+# Install all dependencies (including devDependencies for build)
+RUN npm install
 
 # Copy TypeScript source
 COPY tsconfig.json ./
@@ -31,6 +31,9 @@ COPY src ./src
 
 # Build TypeScript
 RUN npm run build
+
+# Remove devDependencies to reduce image size
+RUN npm prune --production
 
 # Copy skills
 COPY skills ./skills
