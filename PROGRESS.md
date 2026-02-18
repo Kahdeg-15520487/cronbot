@@ -166,17 +166,20 @@ This document tracks the implementation progress of CronBot, an autonomous AI-po
 |------|--------|-------|
 | Next.js project setup | ✅ | App router, TypeScript, Tailwind |
 | API client | ✅ | Axios with typed endpoints |
-| Dashboard page | ✅ | Stats, activity, quick actions |
+| Dashboard page | ✅ | Real-time stats, recent tasks, active agents |
 | Kanban board | ✅ | Drag-and-drop task cards |
 | Project list page | ✅ | Grid view with create modal |
-| Project detail page | ✅ | Kanban board, stats, agents |
+| Project detail page | ✅ | Kanban board, stats, agents, spawn agent |
 | Sidebar navigation | ✅ | Active state, user menu |
 | React Query setup | ✅ | Data fetching, caching |
 | Dockerfile | ✅ | Multi-stage build |
+| Tasks page | ✅ | Global task list with filters, search |
+| Task detail page | ✅ | Full task view, comments, edit modal |
+| Agents page | ✅ | Agent grid, status cards, spawn modal |
+| Team page | ✅ | Team management, projects |
+| Settings page | ✅ | Profile, notifications, security, integrations |
 | Authentication flow | ⏳ | Authentik OIDC |
 | Chat interface | ⏳ | Agent communication |
-| Settings pages | ⏳ | |
-| Agents page | ⏳ | |
 
 ---
 
@@ -279,8 +282,8 @@ This document tracks the implementation progress of CronBot, an autonomous AI-po
 | 4. Agent System | ██████████ 100% |
 | 5. MCP Tools | ░░░░░░░░░░ 0% |
 | 6. Skills System | ██████░░░░ 60% |
-| 11. Web UI | ███████░░░ 70% |
+| 11. Web UI | █████████░ 90% |
 | 17. Docker Compose | ██████████ 100% |
 | 7-10, 12-16, 18. Services | ░░░░░░░░░░ 0% |
 
-**Overall Progress: ~35%**
+**Overall Progress: ~40%**

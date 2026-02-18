@@ -22,6 +22,7 @@ export default function ProjectDetailPage() {
   const params = useParams();
   const projectId = params.id as string;
   const [showNewTask, setShowNewTask] = useState(false);
+  const [spawning, setSpawning] = useState(false);
 
   const { data: project, isLoading: projectLoading } = useQuery({
     queryKey: ['project', projectId],
@@ -46,6 +47,20 @@ export default function ProjectDetailPage() {
       return res.data;
     },
   });
+
+  const queryClient = useQueryClient();
+
+  const spawnAgentMutation = useMutation({
+    mutationFn: () => projectsApi.createAgent(projectId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agents', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+    },
+  });
+
+  const handleSpawnAgent = () => {
+    spawnAgentMutation.mutate();
+  };
 
   if (projectLoading) {
     return (
@@ -103,9 +118,13 @@ export default function ProjectDetailPage() {
                 <Plus className="w-4 h-4" />
                 Add Task
               </button>
-              <button className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+              <button
+                onClick={handleSpawnAgent}
+                disabled={spawnAgentMutation.isPending}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+              >
                 <Bot className="w-4 h-4" />
-                Spawn Agent
+                {spawnAgentMutation.isPending ? 'Spawning...' : 'Spawn Agent'}
               </button>
               <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
                 <Settings className="w-5 h-5 text-gray-600" />
