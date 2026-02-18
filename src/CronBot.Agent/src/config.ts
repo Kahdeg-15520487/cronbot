@@ -11,6 +11,8 @@ export function loadConfig(): AgentConfig {
     projectId: getRequiredEnv('PROJECT_ID'),
     agentId: getRequiredEnv('AGENT_ID'),
     autonomyLevel: parseAutonomyLevel(process.env.AUTONOMY_LEVEL),
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+    anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL,
     mcpRegistryUrl: process.env.MCP_REGISTRY_URL || 'http://localhost:5000/api/mcp/registry',
     kanbanUrl: process.env.KANBAN_URL || 'http://cronbot-api:8080/api',
     gitUrl: process.env.GIT_URL || 'http://gitea:3000',

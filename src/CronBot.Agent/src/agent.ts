@@ -36,7 +36,10 @@ export class Agent {
     this.stateManager = new StateManager(config.statePath);
     this.mcpRegistry = new McpRegistry(config.autonomyLevel);
     this.skillExecutor = new SkillExecutor(config.skillsPath, config.workspacePath);
-    this.anthropic = new Anthropic();
+    this.anthropic = new Anthropic({
+      apiKey: config.anthropicApiKey,
+      baseURL: config.anthropicBaseUrl,
+    });
     this.apiClient = new ApiClient(config.kanbanUrl);
   }
 

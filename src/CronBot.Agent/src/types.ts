@@ -116,6 +116,8 @@ export interface AgentConfig {
   projectId: string;
   agentId: string;
   autonomyLevel: AutonomyLevel;
+  anthropicApiKey?: string;
+  anthropicBaseUrl?: string;
   mcpRegistryUrl: string;
   kanbanUrl: string;
   gitUrl: string;
