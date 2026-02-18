@@ -239,7 +239,24 @@ This document tracks the implementation progress of CronBot, an autonomous AI-po
 
 ---
 
-## Phase 17: Deployment
+## Phase 17: Docker Compose Integration
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Unified docker-compose.yml | ✅ | All services in single file |
+| PostgreSQL container | ✅ | Port 5433 |
+| Redis container | ✅ | Port 6380 |
+| RabbitMQ container | ✅ | Port 5673, management on 15674 |
+| MinIO container | ✅ | API on 9002, console on 9003 |
+| API container | ✅ | Port 5001, health check |
+| Web container | ✅ | Port 3000 |
+| Agent container (optional) | ✅ | Profile: agent |
+| Health checks | ✅ | All services with health checks |
+| Dependency ordering | ✅ | API waits for DB/Redis |
+
+---
+
+## Phase 18: Deployment
 
 | Task | Status | Notes |
 |------|--------|-------|
@@ -263,6 +280,7 @@ This document tracks the implementation progress of CronBot, an autonomous AI-po
 | 5. MCP Tools | ░░░░░░░░░░ 0% |
 | 6. Skills System | ██████░░░░ 60% |
 | 11. Web UI | ███████░░░ 70% |
-| 7-10, 12-17. Services | ░░░░░░░░░░ 0% |
+| 17. Docker Compose | ██████████ 100% |
+| 7-10, 12-16, 18. Services | ░░░░░░░░░░ 0% |
 
-**Overall Progress: ~30%**
+**Overall Progress: ~35%**

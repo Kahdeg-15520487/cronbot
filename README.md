@@ -12,21 +12,28 @@ nano .env  # Set ANTHROPIC_API_KEY
 # 2. Start all services
 docker compose up -d
 
-# 3. Access the application
-open http://localhost
+# 3. Run database migrations
+cd src/CronBot.Api
+dotnet ef database update --project ../CronBot.Infrastructure \
+  --connection "Host=localhost;Port=5433;Database=cronbot;Username=cronbot;Password=cronbot"
+
+# 4. Access the application
+open http://localhost:3000
 ```
 
 ## Services
 
 | Service | URL | Description |
 |---------|-----|-------------|
-| Web UI | http://localhost | Next.js dashboard and Kanban |
-| API | http://localhost/api | REST API endpoints |
-| Traefik | http://localhost:8080 | Reverse proxy dashboard |
-| RabbitMQ | http://localhost:15672 | Message queue management |
-| MinIO | http://localhost:9001 | Object storage console |
+| Web UI | http://localhost:3000 | Next.js dashboard and Kanban |
+| API | http://localhost:5001/api | REST API endpoints |
+| PostgreSQL | localhost:5433 | Database (user: cronbot, db: cronbot) |
+| Redis | localhost:6380 | Cache and session storage |
+| RabbitMQ | http://localhost:15674 | Message queue management |
+| MinIO | http://localhost:9003 | Object storage console |
 
 Default credentials:
+- PostgreSQL: `cronbot` / `cronbot`
 - RabbitMQ: `cronbot` / `cronbot`
 - MinIO: `cronbot` / `cronbot123`
 

@@ -1,5 +1,3 @@
-version: "3.8"
-
 x-healthcheck: &default-healthcheck
   interval: 30s
   timeout: 10s
@@ -7,25 +5,6 @@ x-healthcheck: &default-healthcheck
   start_period: 30s
 
 services:
-  # ═══════════════════════════════════════════════════════════════
-  # REVERSE PROXY
-  # ═══════════════════════════════════════════════════════════════
-  traefik:
-    image: traefik:v3.0
-    command:
-      - "--api.insecure=true"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-    ports:
-      - "80:80"
-      - "8080:8080"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    healthcheck:
-      <<: *default-healthcheck
-      test: ["CMD", "traefik", "healthcheck"]
-
   # ═══════════════════════════════════════════════════════════════
   # DATA STORES
   # ═══════════════════════════════════════════════════════════════
@@ -37,21 +16,21 @@ services:
       POSTGRES_DB: cronbot
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
     healthcheck:
       <<: *default-healthcheck
       test: ["CMD-SHELL", "pg_isready -U cronbot"]
-    labels:
-      - "traefik.enable=false"
 
   redis:
     image: redis:7-alpine
     volumes:
       - redis-data:/data
+    ports:
+      - "6380:6379"
     healthcheck:
       <<: *default-healthcheck
       test: ["CMD", "redis-cli", "ping"]
-    labels:
-      - "traefik.enable=false"
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
@@ -61,12 +40,11 @@ services:
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     ports:
-      - "15672:15672"
+      - "5673:5672"
+      - "15674:15672"
     healthcheck:
       <<: *default-healthcheck
       test: ["CMD", "rabbitmqctl", "status"]
-    labels:
-      - "traefik.enable=false"
 
   minio:
     image: minio/minio:latest
@@ -77,13 +55,11 @@ services:
     volumes:
       - minio-data:/data
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "9002:9000"
+      - "9003:9001"
     healthcheck:
       <<: *default-healthcheck
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-    labels:
-      - "traefik.enable=false"
 
   # ═══════════════════════════════════════════════════════════════
   # CRONBOT SERVICES
@@ -99,6 +75,8 @@ services:
       - RabbitMQ__Username=cronbot
       - RabbitMQ__Password=${RABBITMQ_PASSWORD:-cronbot}
       - ASPNETCORE_ENVIRONMENT=Development
+    ports:
+      - "5001:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -107,29 +85,21 @@ services:
     healthcheck:
       <<: *default-healthcheck
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.api.rule=PathPrefix(`/api`)"
-      - "traefik.http.routers.api.entrypoints=web"
-      - "traefik.http.services.api.loadbalancer.server.port=8080"
 
   web:
     build:
       context: ./src/CronBot.Web
       dockerfile: Dockerfile
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost/api
+      - NEXT_PUBLIC_API_URL=http://localhost:5001/api
+    ports:
+      - "3000:3000"
     depends_on:
       api:
         condition: service_healthy
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.web.rule=PathPrefix(`/`)"
-      - "traefik.http.routers.web.entrypoints=web"
-      - "traefik.http.services.web.loadbalancer.server.port=3000"
 
   # ═══════════════════════════════════════════════════════════════
-  # AGENT (Sample instance - use --profile agent to start)
+  # AGENT (Optional - use --profile agent)
   # ═══════════════════════════════════════════════════════════════
   agent:
     build:
@@ -142,7 +112,7 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
       - KANBAN_URL=http://api:8080/api
-      - MCP_REGISTRY_URL=http://api:8080/api/mcp/registry
+      - MCP_REGISTRY_URL=http://api:8080/api/mcp
       - WORKSPACE_PATH=/workspace
       - SKILLS_PATH=/app/skills
       - AGENT_STATE_PATH=/agent-state
