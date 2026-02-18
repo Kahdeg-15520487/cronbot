@@ -1,0 +1,169 @@
+version: "3.8"
+
+x-healthcheck: &default-healthcheck
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 30s
+
+services:
+  # ═══════════════════════════════════════════════════════════════
+  # REVERSE PROXY
+  # ═══════════════════════════════════════════════════════════════
+  traefik:
+    image: traefik:v3.0
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD", "traefik", "healthcheck"]
+
+  # ═══════════════════════════════════════════════════════════════
+  # DATA STORES
+  # ═══════════════════════════════════════════════════════════════
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cronbot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cronbot}
+      POSTGRES_DB: cronbot
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD-SHELL", "pg_isready -U cronbot"]
+    labels:
+      - "traefik.enable=false"
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD", "redis-cli", "ping"]
+    labels:
+      - "traefik.enable=false"
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: cronbot
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-cronbot}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    ports:
+      - "15672:15672"
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD", "rabbitmqctl", "status"]
+    labels:
+      - "traefik.enable=false"
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: cronbot
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-cronbot123}
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+    labels:
+      - "traefik.enable=false"
+
+  # ═══════════════════════════════════════════════════════════════
+  # CRONBOT SERVICES
+  # ═══════════════════════════════════════════════════════════════
+  api:
+    build:
+      context: .
+      dockerfile: src/CronBot.Api/Dockerfile
+    environment:
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=cronbot;Username=cronbot;Password=${POSTGRES_PASSWORD:-cronbot}
+      - Redis__Connection=redis:6379
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__Username=cronbot
+      - RabbitMQ__Password=${RABBITMQ_PASSWORD:-cronbot}
+      - ASPNETCORE_ENVIRONMENT=Development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=PathPrefix(`/api`)"
+      - "traefik.http.routers.api.entrypoints=web"
+      - "traefik.http.services.api.loadbalancer.server.port=8080"
+
+  web:
+    build:
+      context: ./src/CronBot.Web
+      dockerfile: Dockerfile
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost/api
+    depends_on:
+      api:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.web.entrypoints=web"
+      - "traefik.http.services.web.loadbalancer.server.port=3000"
+
+  # ═══════════════════════════════════════════════════════════════
+  # AGENT (Sample instance - use --profile agent to start)
+  # ═══════════════════════════════════════════════════════════════
+  agent:
+    build:
+      context: ./src/CronBot.Agent
+      dockerfile: Dockerfile
+    environment:
+      - PROJECT_ID=00000000-0000-0000-0000-000000000001
+      - AGENT_ID=00000000-0000-0000-0000-000000000001
+      - AUTONOMY_LEVEL=${AUTONOMY_LEVEL:-2}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
+      - KANBAN_URL=http://api:8080/api
+      - MCP_REGISTRY_URL=http://api:8080/api/mcp/registry
+      - WORKSPACE_PATH=/workspace
+      - SKILLS_PATH=/app/skills
+      - AGENT_STATE_PATH=/agent-state
+      - LOG_LEVEL=info
+    volumes:
+      - agent-workspace:/workspace
+      - agent-state:/agent-state
+    depends_on:
+      api:
+        condition: service_healthy
+    profiles:
+      - agent
+
+networks:
+  default:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  rabbitmq-data:
+  minio-data:
+  agent-workspace:
+  agent-state:
