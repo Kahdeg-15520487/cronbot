@@ -10,6 +10,7 @@ import {
 } from './types.js';
 import { StateManager } from './state/manager.js';
 import { McpRegistry } from './mcp/registry.js';
+import { KanbanTools } from './mcp/kanban-tools.js';
 import { SkillExecutor } from './skills/executor.js';
 import { createLogger } from './logger.js';
 
@@ -22,6 +23,7 @@ export class Agent {
   private config: AgentConfig;
   private stateManager: StateManager;
   private mcpRegistry: McpRegistry;
+  private kanbanTools: KanbanTools;
   private skillExecutor: SkillExecutor;
   private anthropic: Anthropic;
   private status: AgentStatus = AgentStatus.Idle;
@@ -33,6 +35,7 @@ export class Agent {
     this.config = config;
     this.stateManager = new StateManager(config.statePath);
     this.mcpRegistry = new McpRegistry(config.autonomyLevel);
+    this.kanbanTools = new KanbanTools(config.kanbanUrl, config.projectId);
     this.skillExecutor = new SkillExecutor(config.skillsPath, config.workspacePath);
     this.anthropic = new Anthropic({
       apiKey: config.anthropicApiKey,
@@ -242,6 +245,18 @@ export class Agent {
       .map(d => `- ${d.decision}`)
       .join('\n');
 
+    const mcpTools = this.mcpRegistry.getAllTools()
+      .map(t => `- ${t.tool.name}: ${t.tool.description}`)
+      .join('\n') || 'No MCP tools available';
+
+    const kanbanTools = this.kanbanTools.getTools()
+      .map(t => `- ${t.name}: ${t.description}`)
+      .join('\n');
+
+    const skills = this.skillExecutor.getAvailableSkills()
+      .map(s => `- ${s.meta.name}: ${s.meta.description}`)
+      .join('\n') || 'No skills available';
+
     return `
 ## Task Information
 - **ID**: ${task.id}
@@ -253,11 +268,14 @@ export class Agent {
 ## Recent Decisions
 ${recentDecisions || 'No recent decisions'}
 
-## Available Tools
-${this.mcpRegistry.getAllTools().map(t => `- ${t.tool.name}: ${t.tool.description}`).join('\n') || 'No tools available'}
+## Available MCP Tools
+${mcpTools}
+
+## Available Kanban Tools (for task management)
+${kanbanTools}
 
 ## Available Skills
-${this.skillExecutor.getAvailableSkills().map(s => `- ${s.meta.name}: ${s.meta.description}`).join('\n') || 'No skills available'}
+${skills}
 
 Please complete this task. Start by creating a plan, then execute it step by step.
 `;
@@ -311,13 +329,22 @@ Please complete this task. Start by creating a plan, then execute it step by ste
   }
 
   /**
-   * Build Claude tools from MCP tools.
+   * Build Claude tools from MCP tools and built-in tools.
    */
   private buildClaudeTools(): Anthropic.Tool[] {
     const tools: Anthropic.Tool[] = [];
 
     // Add MCP tools
     for (const { tool } of this.mcpRegistry.getAllTools()) {
+      tools.push({
+        name: tool.name,
+        description: tool.description,
+        input_schema: tool.inputSchema as Anthropic.Tool['input_schema'],
+      });
+    }
+
+    // Add Kanban tools
+    for (const tool of this.kanbanTools.getTools()) {
       tools.push({
         name: tool.name,
         description: tool.description,
@@ -361,6 +388,8 @@ Please complete this task. Start by creating a plan, then execute it step by ste
         if (block.name === 'execute_skill') {
           const args = block.input as { skill_name: string; arguments?: Record<string, unknown> };
           result = await this.skillExecutor.execute(args.skill_name, args.arguments || {});
+        } else if (this.kanbanTools.hasTool(block.name)) {
+          result = await this.kanbanTools.callTool(block.name, block.input as Record<string, unknown>);
         } else {
           result = await this.mcpRegistry.callTool(block.name, block.input as Record<string, unknown>);
         }
