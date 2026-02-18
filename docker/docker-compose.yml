@@ -1,0 +1,174 @@
+version: "3.8"
+
+x-common-env: &common-env
+  TRAEFIK_ID: ${TRAEFIK_ID:-localhost}
+
+x-healthcheck: &default-healthcheck
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 10s
+
+services:
+  # ═══════════════════════════════════════════════════════════════
+  # REVERSE PROXY
+  # ═══════════════════════════════════════════════════════════════
+  traefik:
+    image: traefik:v3.0
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=cronbot-network"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      # traefik.me wildcard certificate
+      - "--certificatesresolvers.traefikme.acme.tlschallenge=true"
+      - "--certificatesresolvers.traefikme.acme.email=admin@${TRAEFIK_ID:-localhost}.traefik.me"
+      - "--certificatesresolvers.traefikme.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.traefikme.acme.caserver=https://acme-v02.api.letsencrypt.org/directory"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-letsencrypt:/letsencrypt
+    networks:
+      - cronbot-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.${TRAEFIK_ID:-localhost}.traefik.me`)"
+      - "traefik.http.routers.traefik.tls=true"
+      - "traefik.http.routers.traefik.tls.certresolver=traefikme"
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD", "traefik", "healthcheck"]
+
+  # ═══════════════════════════════════════════════════════════════
+  # DATA STORES
+  # ═══════════════════════════════════════════════════════════════
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cronbot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cronbot}
+      POSTGRES_DB: cronbot
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - cronbot-network
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cronbot}"]
+    command: >
+      postgres
+      -c max_connections=200
+      -c shared_buffers=256MB
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    networks:
+      - cronbot-network
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD", "redis-cli", "ping"]
+    ports:
+      - "6379:6379"
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-cronbot}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-cronbot}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - cronbot-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.rabbitmq.rule=Host(`mq.${TRAEFIK_ID:-localhost}.traefik.me`)"
+      - "traefik.http.routers.rabbitmq.tls=true"
+      - "traefik.http.routers.rabbitmq.tls.certresolver=traefikme"
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD", "rabbitmqctl", "status"]
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-cronbot}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-cronbot123}
+    volumes:
+      - minio-data:/data
+    networks:
+      - cronbot-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.minio.rule=Host(`storage.${TRAEFIK_ID:-localhost}.traefik.me`)"
+      - "traefik.http.routers.minio.tls=true"
+      - "traefik.http.routers.minio.tls.certresolver=traefikme"
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  # ═══════════════════════════════════════════════════════════════
+  # CRONBOT API (Development)
+  # ═══════════════════════════════════════════════════════════════
+  cronbot-api:
+    build:
+      context: ..
+      dockerfile: src/CronBot.Api/Dockerfile
+    environment:
+      <<: *common-env
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=cronbot;Username=${POSTGRES_USER:-cronbot};Password=${POSTGRES_PASSWORD:-cronbot}
+      Redis__Connection: redis:6379
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__Username: ${RABBITMQ_USER:-cronbot}
+      RabbitMQ__Password: ${RABBITMQ_PASSWORD:-cronbot}
+      MinIO__Endpoint: minio:9000
+      MinIO__AccessKey: ${MINIO_ROOT_USER:-cronbot}
+      MinIO__SecretKey: ${MINIO_ROOT_PASSWORD:-cronbot123}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - cronbot-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cronbot-api.rule=Host(`api.${TRAEFIK_ID:-localhost}.traefik.me`)"
+      - "traefik.http.routers.cronbot-api.tls=true"
+      - "traefik.http.routers.cronbot-api.tls.certresolver=traefikme"
+      - "traefik.http.services.cronbot-api.loadbalancer.server.port=8080"
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+    ports:
+      - "5000:8080"
+
+networks:
+  cronbot-network:
+    driver: bridge
+
+volumes:
+  traefik-letsencrypt:
+  postgres-data:
+  redis-data:
+  rabbitmq-data:
+  minio-data:
