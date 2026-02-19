@@ -13,6 +13,21 @@ public class Agent : Entity
     public Guid ProjectId { get; set; }
 
     /// <summary>
+    /// Human-readable name for the agent.
+    /// </summary>
+    public string? Name { get; set; }
+
+    /// <summary>
+    /// Autonomy level for this agent (inherited from project or overridden).
+    /// </summary>
+    public int AutonomyLevel { get; set; } = 2;
+
+    /// <summary>
+    /// JSON blob for agent-specific settings.
+    /// </summary>
+    public string? Settings { get; set; }
+
+    /// <summary>
     /// ID of the current task being worked on (optional).
     /// </summary>
     public Guid? CurrentTaskId { get; set; }

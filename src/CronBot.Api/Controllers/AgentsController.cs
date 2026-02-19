@@ -1,6 +1,7 @@
 using CronBot.Domain.Entities;
 using CronBot.Domain.Enums;
 using CronBot.Infrastructure.Data;
+using CronBot.Infrastructure.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,10 +15,17 @@ namespace CronBot.Api.Controllers;
 public class AgentsController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly OrchestratorService _orchestrator;
+    private readonly ILogger<AgentsController> _logger;
 
-    public AgentsController(AppDbContext context)
+    public AgentsController(
+        AppDbContext context,
+        OrchestratorService orchestrator,
+        ILogger<AgentsController> logger)
     {
         _context = context;
+        _orchestrator = orchestrator;
+        _logger = logger;
     }
 
     /// <summary>
@@ -27,6 +35,7 @@ public class AgentsController : ControllerBase
     {
         public Guid Id { get; init; }
         public Guid ProjectId { get; init; }
+        public string? Name { get; init; }
         public Guid? CurrentTaskId { get; init; }
         public string? ContainerId { get; init; }
         public string? ContainerName { get; init; }
@@ -38,6 +47,7 @@ public class AgentsController : ControllerBase
         public DateTimeOffset? LastActivityAt { get; init; }
         public int TasksCompleted { get; init; }
         public int CommitsMade { get; init; }
+        public int AutonomyLevel { get; init; }
     }
 
     /// <summary>
@@ -71,6 +81,7 @@ public class AgentsController : ControllerBase
             {
                 Id = a.Id,
                 ProjectId = a.ProjectId,
+                Name = a.Name,
                 CurrentTaskId = a.CurrentTaskId,
                 ContainerId = a.ContainerId,
                 ContainerName = a.ContainerName,
@@ -81,7 +92,8 @@ public class AgentsController : ControllerBase
                 StartedAt = a.StartedAt,
                 LastActivityAt = a.LastActivityAt,
                 TasksCompleted = a.TasksCompleted,
-                CommitsMade = a.CommitsMade
+                CommitsMade = a.CommitsMade,
+                AutonomyLevel = a.AutonomyLevel
             })
             .ToListAsync();
 
@@ -107,6 +119,7 @@ public class AgentsController : ControllerBase
         {
             Id = agent.Id,
             ProjectId = agent.ProjectId,
+            Name = agent.Name,
             CurrentTaskId = agent.CurrentTaskId,
             ContainerId = agent.ContainerId,
             ContainerName = agent.ContainerName,
@@ -117,7 +130,8 @@ public class AgentsController : ControllerBase
             StartedAt = agent.StartedAt,
             LastActivityAt = agent.LastActivityAt,
             TasksCompleted = agent.TasksCompleted,
-            CommitsMade = agent.CommitsMade
+            CommitsMade = agent.CommitsMade,
+            AutonomyLevel = agent.AutonomyLevel
         });
     }
 
@@ -142,6 +156,7 @@ public class AgentsController : ControllerBase
             {
                 Id = a.Id,
                 ProjectId = a.ProjectId,
+                Name = a.Name,
                 CurrentTaskId = a.CurrentTaskId,
                 ContainerId = a.ContainerId,
                 ContainerName = a.ContainerName,
@@ -152,7 +167,8 @@ public class AgentsController : ControllerBase
                 StartedAt = a.StartedAt,
                 LastActivityAt = a.LastActivityAt,
                 TasksCompleted = a.TasksCompleted,
-                CommitsMade = a.CommitsMade
+                CommitsMade = a.CommitsMade,
+                AutonomyLevel = a.AutonomyLevel
             })
             .ToListAsync();
 
@@ -160,13 +176,15 @@ public class AgentsController : ControllerBase
     }
 
     /// <summary>
-    /// Creates a new agent for a project.
+    /// Spawns a new agent for a project (creates Docker container).
     /// </summary>
     [HttpPost("/api/projects/{projectId}/agents")]
     [ProducesResponseType(typeof(AgentResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<AgentResponse>> CreateAgent(Guid projectId)
+    public async Task<ActionResult<AgentResponse>> SpawnAgent(
+        Guid projectId,
+        [FromBody] SpawnAgentRequest? request = null)
     {
         var project = await _context.Projects.FindAsync(projectId);
 
@@ -184,37 +202,41 @@ public class AgentsController : ControllerBase
             return BadRequest($"Maximum number of agents ({project.MaxAgents}) reached for this project.");
         }
 
-        var agent = new Agent
+        try
         {
-            ProjectId = projectId,
-            Status = AgentStatus.Idle
-        };
+            // Spawn agent container via Orchestrator
+            var agent = await _orchestrator.SpawnAgentAsync(projectId, request?.Name);
 
-        _context.Agents.Add(agent);
-        await _context.SaveChangesAsync();
+            var response = new AgentResponse
+            {
+                Id = agent.Id,
+                ProjectId = agent.ProjectId,
+                Name = agent.Name,
+                CurrentTaskId = agent.CurrentTaskId,
+                ContainerId = agent.ContainerId,
+                ContainerName = agent.ContainerName,
+                Status = agent.Status,
+                StatusMessage = agent.StatusMessage,
+                CpuUsagePercent = agent.CpuUsagePercent,
+                MemoryUsageMb = agent.MemoryUsageMb,
+                StartedAt = agent.StartedAt,
+                LastActivityAt = agent.LastActivityAt,
+                TasksCompleted = agent.TasksCompleted,
+                CommitsMade = agent.CommitsMade,
+                AutonomyLevel = agent.AutonomyLevel
+            };
 
-        var response = new AgentResponse
+            return CreatedAtAction(nameof(GetAgent), new { id = agent.Id }, response);
+        }
+        catch (Exception ex)
         {
-            Id = agent.Id,
-            ProjectId = agent.ProjectId,
-            CurrentTaskId = agent.CurrentTaskId,
-            ContainerId = agent.ContainerId,
-            ContainerName = agent.ContainerName,
-            Status = agent.Status,
-            StatusMessage = agent.StatusMessage,
-            CpuUsagePercent = agent.CpuUsagePercent,
-            MemoryUsageMb = agent.MemoryUsageMb,
-            StartedAt = agent.StartedAt,
-            LastActivityAt = agent.LastActivityAt,
-            TasksCompleted = agent.TasksCompleted,
-            CommitsMade = agent.CommitsMade
-        };
-
-        return CreatedAtAction(nameof(GetAgent), new { id = agent.Id }, response);
+            _logger.LogError(ex, "Failed to spawn agent for project {ProjectId}", projectId);
+            return BadRequest($"Failed to spawn agent: {ex.Message}");
+        }
     }
 
     /// <summary>
-    /// Terminates an agent.
+    /// Terminates an agent (stops Docker container).
     /// </summary>
     [HttpPost("{id}/terminate")]
     [ProducesResponseType(typeof(AgentResponse), StatusCodes.Status200OK)]
@@ -228,15 +250,24 @@ public class AgentsController : ControllerBase
             return NotFound();
         }
 
+        try
+        {
+            await _orchestrator.StopAgentAsync(id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to stop agent container {AgentId}", id);
+        }
+
         agent.Status = AgentStatus.Terminated;
         agent.TerminatedAt = DateTimeOffset.UtcNow;
-
         await _context.SaveChangesAsync();
 
         return Ok(new AgentResponse
         {
             Id = agent.Id,
             ProjectId = agent.ProjectId,
+            Name = agent.Name,
             CurrentTaskId = agent.CurrentTaskId,
             ContainerId = agent.ContainerId,
             ContainerName = agent.ContainerName,
@@ -247,7 +278,71 @@ public class AgentsController : ControllerBase
             StartedAt = agent.StartedAt,
             LastActivityAt = agent.LastActivityAt,
             TasksCompleted = agent.TasksCompleted,
-            CommitsMade = agent.CommitsMade
+            CommitsMade = agent.CommitsMade,
+            AutonomyLevel = agent.AutonomyLevel
         });
     }
+
+    /// <summary>
+    /// Deletes an agent (removes Docker container).
+    /// </summary>
+    [HttpDelete("{id}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DeleteAgent(Guid id)
+    {
+        var agent = await _context.Agents.FindAsync(id);
+
+        if (agent == null)
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            await _orchestrator.RemoveAgentAsync(id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to remove agent container {AgentId}", id);
+            // Still remove from database even if container removal fails
+            _context.Agents.Remove(agent);
+            await _context.SaveChangesAsync();
+        }
+
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Gets logs for an agent.
+    /// </summary>
+    [HttpGet("{id}/logs")]
+    [ProducesResponseType(typeof(string), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<string>> GetAgentLogs(
+        Guid id,
+        [FromQuery] int tail = 100)
+    {
+        var agent = await _context.Agents.FindAsync(id);
+
+        if (agent == null)
+        {
+            return NotFound();
+        }
+
+        // For now, return status message as logs
+        // TODO: Implement actual container log retrieval via Docker API
+        return Ok(agent.StatusMessage ?? "No logs available.");
+    }
+}
+
+/// <summary>
+/// Request to spawn a new agent.
+/// </summary>
+public record SpawnAgentRequest
+{
+    /// <summary>
+    /// Optional name for the agent.
+    /// </summary>
+    public string? Name { get; init; }
 }

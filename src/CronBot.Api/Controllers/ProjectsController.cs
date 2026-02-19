@@ -1,8 +1,11 @@
 using CronBot.Application.DTOs;
 using CronBot.Domain.Entities;
+using CronBot.Domain.Enums;
 using CronBot.Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using TaskEntity = CronBot.Domain.Entities.Task;
+using TaskStatus = CronBot.Domain.Enums.TaskStatus;
 
 namespace CronBot.Api.Controllers;
 
@@ -224,5 +227,99 @@ public class ProjectsController : ControllerBase
         await _context.SaveChangesAsync();
 
         return NoContent();
+    }
+
+    /// <summary>
+    /// Gets the next task ready to be worked on (Sprint status).
+    /// </summary>
+    [HttpGet("{id:guid}/tasks/next")]
+    [ProducesResponseType(typeof(TaskResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<TaskResponse?>> GetNextTask(Guid id)
+    {
+        // Get the next task in Sprint status (ready to be picked up)
+        var task = await _context.Tasks
+            .Where(t => t.ProjectId == id && t.Status == TaskStatus.Sprint)
+            .OrderBy(t => t.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        if (task == null)
+        {
+            return Ok((TaskResponse?)null);
+        }
+
+        return Ok(new TaskResponse
+        {
+            Id = task.Id,
+            ProjectId = task.ProjectId,
+            Number = task.Number,
+            Title = task.Title,
+            Description = task.Description,
+            Type = task.Type,
+            Status = task.Status,
+            SprintId = task.SprintId,
+            StoryPoints = task.StoryPoints,
+            AssigneeType = task.AssigneeType,
+            AssigneeId = task.AssigneeId,
+            GitBranch = task.GitBranch,
+            GitPrUrl = task.GitPrUrl,
+            CreatedAt = task.CreatedAt,
+            StartedAt = task.StartedAt,
+            CompletedAt = task.CompletedAt
+        });
+    }
+
+    /// <summary>
+    /// Gets all tasks for a project.
+    /// </summary>
+    [HttpGet("{id:guid}/tasks")]
+    [ProducesResponseType(typeof(IEnumerable<TaskResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IEnumerable<TaskResponse>>> GetProjectTasks(
+        Guid id,
+        [FromQuery] TaskStatus? status = null,
+        [FromQuery] int skip = 0,
+        [FromQuery] int take = 50)
+    {
+        var project = await _context.Projects.FindAsync(id);
+
+        if (project == null)
+        {
+            return NotFound("Project not found.");
+        }
+
+        var query = _context.Tasks.Where(t => t.ProjectId == id);
+
+        if (status.HasValue)
+        {
+            query = query.Where(t => t.Status == status.Value);
+        }
+
+        var tasks = await query
+            .OrderBy(t => t.Number)
+            .Skip(skip)
+            .Take(take)
+            .Select(t => new TaskResponse
+            {
+                Id = t.Id,
+                ProjectId = t.ProjectId,
+                Number = t.Number,
+                Title = t.Title,
+                Description = t.Description,
+                Type = t.Type,
+                Status = t.Status,
+                SprintId = t.SprintId,
+                StoryPoints = t.StoryPoints,
+                AssigneeType = t.AssigneeType,
+                AssigneeId = t.AssigneeId,
+                GitBranch = t.GitBranch,
+                GitPrUrl = t.GitPrUrl,
+                CreatedAt = t.CreatedAt,
+                StartedAt = t.StartedAt,
+                CompletedAt = t.CompletedAt
+            })
+            .ToListAsync();
+
+        return Ok(tasks);
     }
 }

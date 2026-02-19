@@ -6,7 +6,7 @@ x-healthcheck: &default-healthcheck
 
 services:
   # ═══════════════════════════════════════════════════════════════
-  # DATA STORES
+  # INFRASTRUCTURE
   # ═══════════════════════════════════════════════════════════════
   postgres:
     image: postgres:16-alpine
@@ -74,7 +74,12 @@ services:
       - RabbitMQ__Host=rabbitmq
       - RabbitMQ__Username=cronbot
       - RabbitMQ__Password=${RABBITMQ_PASSWORD:-cronbot}
+      - Anthropic__ApiKey=${ANTHROPIC_API_KEY}
+      - Anthropic__BaseUrl=${ANTHROPIC_BASE_URL:-}
+      - Services__KanbanUrl=http://api:8080/api
       - ASPNETCORE_ENVIRONMENT=Development
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "5001:8080"
     depends_on:
@@ -99,18 +104,24 @@ services:
         condition: service_healthy
 
   # ═══════════════════════════════════════════════════════════════
-  # AGENT (Optional - use --profile agent)
+  # AGENT (Development - spawned manually)
+  # In production, agents are spawned dynamically via Docker API
   # ═══════════════════════════════════════════════════════════════
   agent:
     build:
       context: ./src/CronBot.Agent
       dockerfile: Dockerfile
     environment:
-      - PROJECT_ID=00000000-0000-0000-0000-000000000001
-      - AGENT_ID=00000000-0000-0000-0000-000000000001
+      - PROJECT_ID=${PROJECT_ID:-00000000-0000-0000-0000-000000000001}
+      - AGENT_ID=${AGENT_ID:-00000000-0000-0000-0000-000000000001}
       - AUTONOMY_LEVEL=${AUTONOMY_LEVEL:-2}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
+      - ANTHROPIC_MAX_TOKENS=${ANTHROPIC_MAX_TOKENS:-4096}
+      - TASK_POLL_INTERVAL_MS=${TASK_POLL_INTERVAL_MS:-30000}
+      - RETRY_DELAY_MS=${RETRY_DELAY_MS:-10000}
+      - BLOCKER_WAIT_MS=${BLOCKER_WAIT_MS:-30000}
       - KANBAN_URL=http://api:8080/api
       - MCP_REGISTRY_URL=http://api:8080/api/mcp
       - WORKSPACE_PATH=/workspace
@@ -128,6 +139,7 @@ services:
 
 networks:
   default:
+    name: cronbot_default
     driver: bridge
 
 volumes:

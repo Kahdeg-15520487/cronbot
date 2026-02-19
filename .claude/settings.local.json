@@ -25,7 +25,21 @@
       "Bash(npm run build:*)",
       "Bash(npm run dev:*)",
       "Bash(node dist/index.js:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(sudo lsof:*)",
+      "Bash(ls:*)",
+      "mcp__zai-mcp-server__analyze_image",
+      "Bash(lsof:*)",
+      "mcp__web-search-prime__webSearchPrime",
+      "mcp__zread__search_doc",
+      "Bash(docker pull:*)",
+      "mcp__web-reader__webReader",
+      "mcp__zread__read_file",
+      "mcp__zread__get_repo_structure",
+      "Bash(npm install:*)",
+      "Bash(npm view @anthropic-ai/claude-agent-sdk versions:*)",
+      "Bash(npm search:*)",
+      "Bash(npm ls:*)"
     ]
   }
 }

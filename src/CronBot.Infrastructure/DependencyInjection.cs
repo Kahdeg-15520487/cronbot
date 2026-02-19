@@ -1,4 +1,5 @@
 using CronBot.Infrastructure.Data;
+using CronBot.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,6 +22,12 @@ public static class DependencyInjection
             options.UseNpgsql(
                 configuration.GetConnectionString("DefaultConnection"),
                 b => b.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName)));
+
+        // Register Docker client as singleton
+        services.AddSingleton<DockerClientService>();
+
+        // Register Orchestrator service
+        services.AddScoped<OrchestratorService>();
 
         return services;
     }
