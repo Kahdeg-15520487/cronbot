@@ -1,5 +1,7 @@
+using CronBot.Api.Mcp;
 using CronBot.Application;
 using CronBot.Infrastructure;
+using ModelContextProtocol.Server;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -21,6 +23,11 @@ builder.Services.AddSwaggerGen();
 // Add application and infrastructure services
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+
+// Add MCP server with HTTP transport for agent tools
+builder.Services.AddMcpServer()
+    .WithHttpTransport()
+    .WithToolsFromAssembly(typeof(KanbanTools).Assembly);
 
 // Add health checks
 builder.Services.AddHealthChecks();
@@ -51,6 +58,9 @@ app.UseCors();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHealthChecks("/health");
+
+// Map MCP endpoint for agent tools
+app.MapMcp();
 
 Log.Information("Starting CronBot API...");
 
