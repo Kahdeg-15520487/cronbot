@@ -1,6 +1,8 @@
 using CronBot.Api.Mcp;
 using CronBot.Application;
 using CronBot.Infrastructure;
+using CronBot.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using ModelContextProtocol.Server;
 using Serilog;
 
@@ -44,6 +46,25 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// Auto-migrate database on startup
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    try
+    {
+        logger.LogInformation("Applying database migrations...");
+        db.Database.Migrate();
+        logger.LogInformation("Database migrations applied successfully.");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "An error occurred while applying database migrations.");
+        throw;
+    }
+}
 
 // Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
