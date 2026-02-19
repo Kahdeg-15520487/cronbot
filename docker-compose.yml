@@ -112,8 +112,8 @@ services:
       context: ./src/CronBot.Agent
       dockerfile: Dockerfile
     environment:
-      - PROJECT_ID=${PROJECT_ID:-00000000-0000-0000-0000-000000000001}
-      - AGENT_ID=${AGENT_ID:-00000000-0000-0000-0000-000000000001}
+      - PROJECT_ID=${PROJECT_ID:-}
+      - AGENT_ID=${AGENT_ID:-}
       - AUTONOMY_LEVEL=${AUTONOMY_LEVEL:-2}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
@@ -123,11 +123,8 @@ services:
       - RETRY_DELAY_MS=${RETRY_DELAY_MS:-10000}
       - BLOCKER_WAIT_MS=${BLOCKER_WAIT_MS:-30000}
       - KANBAN_URL=http://api:8080/api
-      - MCP_REGISTRY_URL=http://api:8080/api/mcp
       - WORKSPACE_PATH=/workspace
-      - SKILLS_PATH=/app/skills
-      - AGENT_STATE_PATH=/agent-state
-      - LOG_LEVEL=info
+      - STATE_PATH=/agent-state
     volumes:
       - agent-workspace:/workspace
       - agent-state:/agent-state

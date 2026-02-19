@@ -32,6 +32,6 @@ ENV WORKSPACE_PATH=/workspace
 ENV STATE_PATH=/agent-state
 ENV NODE_ENV=production
 
-# Run the agent
+# Run the agent in daemon mode
 ENTRYPOINT ["node", "dist/index.js"]
-CMD [""]
+CMD ["daemon"]
