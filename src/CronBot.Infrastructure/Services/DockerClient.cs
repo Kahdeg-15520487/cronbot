@@ -60,9 +60,10 @@ public class DockerClientService : IDisposable
                 $"ANTHROPIC_BASE_URL={apiBaseUrl ?? ""}",
                 $"KANBAN_URL={kanbanUrl}",
                 "WORKSPACE_PATH=/workspace",
-                "SKILLS_PATH=/app/skills",
-                "AGENT_STATE_PATH=/agent-state",
-                "LOG_LEVEL=info"
+                "STATE_PATH=/agent-state",
+                "TASK_POLL_INTERVAL_MS=30000",
+                "RETRY_DELAY_MS=10000",
+                "BLOCKER_WAIT_MS=30000"
             };
 
             var labels = new Dictionary<string, string>
