@@ -1,6 +1,23 @@
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+// Determine API URL at runtime
+// - If NEXT_PUBLIC_API_URL is set, use it
+// - Otherwise, construct from current host (works from any machine)
+const getApiUrl = () => {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  // Browser context: use current host with API port
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol; // http: or https:
+    const host = window.location.hostname;
+    return `${protocol}//${host}:5001/api`;
+  }
+  // Server context (SSR): fallback
+  return 'http://localhost:5001/api';
+};
+
+const API_URL = getApiUrl();
 
 export const api = axios.create({
   baseURL: API_URL,
