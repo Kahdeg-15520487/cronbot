@@ -95,8 +95,8 @@ services:
     build:
       context: ./src/CronBot.Web
       dockerfile: Dockerfile
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:5001/api
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:5001/api
     ports:
       - "3000:3000"
     depends_on:
