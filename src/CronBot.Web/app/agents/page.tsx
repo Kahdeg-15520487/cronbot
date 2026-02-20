@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { agentsApi, projectsApi, Agent } from '@/lib/api';
 import { Sidebar } from '@/components/Sidebar';
-import { Bot, Plus, Play, Square, RefreshCw, Activity, Cpu, HardDrive } from 'lucide-react';
+import { Bot, Plus, Play, Square, RefreshCw, Activity, Cpu, HardDrive, Trash2, FileText, X } from 'lucide-react';
 import { useState } from 'react';
 import Link from 'next/link';
 import clsx from 'clsx';
@@ -158,6 +158,7 @@ function StatCard({
 
 function AgentCard({ agent, projects }: { agent: Agent; projects: { id: string; name: string }[] }) {
   const queryClient = useQueryClient();
+  const [showLogs, setShowLogs] = useState(false);
   const project = projects.find((p) => p.id === agent.projectId);
 
   const statusColors: Record<string, { bg: string; dot: string }> = {
@@ -171,6 +172,13 @@ function AgentCard({ agent, projects }: { agent: Agent; projects: { id: string; 
 
   const terminateMutation = useMutation({
     mutationFn: () => agentsApi.terminate(agent.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => agentsApi.delete(agent.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
     },
@@ -228,6 +236,13 @@ function AgentCard({ agent, projects }: { agent: Agent; projects: { id: string; 
 
       {/* Actions */}
       <div className="flex gap-2">
+        <button
+          onClick={() => setShowLogs(true)}
+          className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+        >
+          <FileText className="w-3 h-3" />
+          Logs
+        </button>
         {agent.status === 'working' && (
           <button
             onClick={() => terminateMutation.mutate()}
@@ -244,11 +259,25 @@ function AgentCard({ agent, projects }: { agent: Agent; projects: { id: string; 
             Resume
           </button>
         )}
+        <button
+          onClick={() => {
+            if (confirm('Are you sure you want to delete this agent?')) {
+              deleteMutation.mutate();
+            }
+          }}
+          disabled={deleteMutation.isPending}
+          className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors disabled:opacity-50"
+        >
+          <Trash2 className="w-3 h-3" />
+          Delete
+        </button>
       </div>
 
       <p className="text-xs text-gray-400 mt-3">
         Started {new Date(agent.startedAt).toLocaleString()}
       </p>
+
+      {showLogs && <AgentLogsModal agentId={agent.id} onClose={() => setShowLogs(false)} />}
     </div>
   );
 }
@@ -345,6 +374,63 @@ function SpawnAgentModal({ onClose }: { onClose: () => void }) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function AgentLogsModal({ agentId, onClose }: { agentId: string; onClose: () => void }) {
+  const [tail, setTail] = useState(100);
+
+  const { data: logs, isLoading, refetch } = useQuery({
+    queryKey: ['agent-logs', agentId, tail],
+    queryFn: async () => {
+      const res = await agentsApi.getLogs(agentId, tail);
+      return res.data;
+    },
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h2 className="text-xl font-semibold">Agent Logs</h2>
+          <div className="flex items-center gap-2">
+            <select
+              value={tail}
+              onChange={(e) => setTail(Number(e.target.value))}
+              className="px-2 py-1 border rounded text-sm"
+            >
+              <option value={50}>Last 50</option>
+              <option value={100}>Last 100</option>
+              <option value={500}>Last 500</option>
+              <option value={1000}>Last 1000</option>
+            </select>
+            <button
+              onClick={() => refetch()}
+              className="p-1 hover:bg-gray-100 rounded"
+              title="Refresh"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1 hover:bg-gray-100 rounded"
+              title="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto p-4 bg-gray-900">
+          {isLoading ? (
+            <div className="text-gray-400 text-center py-8">Loading logs...</div>
+          ) : (
+            <pre className="text-xs text-gray-100 font-mono whitespace-pre-wrap">
+              {logs || 'No logs available'}
+            </pre>
+          )}
+        </div>
       </div>
     </div>
   );

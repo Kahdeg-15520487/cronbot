@@ -82,6 +82,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./src/CronBot.Agent:/app/agent-src:ro
     ports:
       - "5001:8080"
     depends_on:

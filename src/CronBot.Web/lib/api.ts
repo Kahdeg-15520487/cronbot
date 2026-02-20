@@ -148,6 +148,7 @@ export interface Task {
 export interface Agent {
   id: string;
   projectId: string;
+  name?: string;
   currentTaskId?: string;
   containerId?: string;
   containerName?: string;
@@ -185,6 +186,7 @@ interface RawTask {
 interface RawAgent {
   id: string;
   projectId: string;
+  name?: string;
   currentTaskId?: string;
   containerId?: string;
   containerName?: string;
@@ -312,4 +314,6 @@ export const agentsApi = {
     ...res,
     data: transformAgent(res.data)
   })),
+  delete: (id: string) => api.delete(`/agents/${id}`),
+  getLogs: (id: string, tail = 100) => api.get<string>(`/agents/${id}/logs`, { params: { tail } }),
 };

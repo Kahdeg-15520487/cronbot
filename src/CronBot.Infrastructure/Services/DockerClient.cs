@@ -2,6 +2,8 @@ using Docker.DotNet;
 using Docker.DotNet.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
+using System.IO;
 
 namespace CronBot.Infrastructure.Services;
 
@@ -236,9 +238,10 @@ public class DockerClientService : IDisposable
     {
         try
         {
-            // Use the older API with demux = true for proper stream handling
-            using var stream = await _client.Containers.GetContainerLogsAsync(
+            // Use the newer API with demux = true for proper stream handling
+            using var multiplexedStream = await _client.Containers.GetContainerLogsAsync(
                 containerId,
+                true, // demux stdout/stderr
                 new ContainerLogsParameters
                 {
                     ShowStdout = true,
@@ -247,7 +250,11 @@ public class DockerClientService : IDisposable
                 },
                 cancellationToken);
 
-            using var reader = new StreamReader(stream);
+            // Read from MultiplexedStream
+            using var memStream = new MemoryStream();
+            await multiplexedStream.CopyOutputToAsync(null, memStream, null, cancellationToken);
+            memStream.Position = 0;
+            using var reader = new StreamReader(memStream);
             return await reader.ReadToEndAsync(cancellationToken);
         }
         catch (Exception ex)
@@ -258,12 +265,13 @@ public class DockerClientService : IDisposable
     }
 
     /// <summary>
-    /// Ensure an image exists locally, pull if needed.
+    /// Ensure an image exists locally. Build from source if not found, pull from registry as fallback.
     /// </summary>
     private async Task EnsureImageExistsAsync(string image, string tag, CancellationToken cancellationToken)
     {
         try
         {
+            // Check if image already exists locally
             var images = await _client.Images.ListImagesAsync(new ImagesListParameters
             {
                 Filters = new Dictionary<string, IDictionary<string, bool>>
@@ -272,26 +280,166 @@ public class DockerClientService : IDisposable
                 }
             }, cancellationToken);
 
-            if (images.Count == 0)
+            if (images.Count > 0)
             {
-                _logger.LogInformation("Pulling image {Image}:{Tag}", image, tag);
-                await _client.Images.CreateImageAsync(
-                    new ImagesCreateParameters { FromImage = image, Tag = tag },
-                    null,
-                    new Progress<JSONMessage>(msg =>
-                    {
-                        if (!string.IsNullOrEmpty(msg.Status))
-                        {
-                            _logger.LogDebug("Pull progress: {Status}", msg.Status);
-                        }
-                    }),
-                    cancellationToken);
+                _logger.LogDebug("Image {Image}:{Tag} already exists locally", image, tag);
+                return;
             }
+
+            _logger.LogInformation("Image {Image}:{Tag} not found locally", image, tag);
+
+            // Try to build from local source first
+            var buildSuccess = await TryBuildImageAsync(image, tag, cancellationToken);
+            if (buildSuccess)
+            {
+                _logger.LogInformation("Successfully built image {Image}:{Tag}", image, tag);
+                return;
+            }
+
+            // Fallback: try to pull from registry
+            _logger.LogInformation("Build failed, attempting to pull {Image}:{Tag} from registry", image, tag);
+            await _client.Images.CreateImageAsync(
+                new ImagesCreateParameters { FromImage = image, Tag = tag },
+                null,
+                new Progress<JSONMessage>(msg =>
+                {
+                    if (!string.IsNullOrEmpty(msg.Status))
+                    {
+                        _logger.LogDebug("Pull progress: {Status}", msg.Status);
+                    }
+                }),
+                cancellationToken);
+
+            _logger.LogInformation("Successfully pulled image {Image}:{Tag}", image, tag);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to ensure image {Image}:{Tag} exists", image, tag);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Try to build the agent image from local source.
+    /// </summary>
+    private async Task<bool> TryBuildImageAsync(string image, string tag, CancellationToken cancellationToken)
+    {
+        // Look for the agent source directory
+        // Try multiple possible locations
+        var possiblePaths = new[]
+        {
+            "/app/agent-src",                    // When running in container with mounted source
+            "./src/CronBot.Agent",               // Development: relative to API working dir
+            "../CronBot.Agent",                  // Development: sibling directory
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "CronBot.Agent")), // Project relative
+        };
+
+        string? buildContextPath = null;
+        foreach (var path in possiblePaths)
+        {
+            var fullPath = Path.GetFullPath(path);
+            if (Directory.Exists(fullPath) && File.Exists(Path.Combine(fullPath, "Dockerfile")))
+            {
+                buildContextPath = fullPath;
+                break;
+            }
+        }
+
+        if (buildContextPath == null)
+        {
+            _logger.LogWarning("Could not find agent source directory for building. Tried: {Paths}", string.Join(", ", possiblePaths));
+            return false;
+        }
+
+        _logger.LogInformation("Building image {Image}:{Tag} from {Path}", image, tag, buildContextPath);
+
+        try
+        {
+            // Create a tar archive of the build context
+            var tarPath = Path.Combine(Path.GetTempPath(), $"cronbot-agent-build-{Guid.NewGuid()}.tar");
+            CreateTarFile(buildContextPath, tarPath);
+
+            using var tarStream = File.OpenRead(tarPath);
+
+            var buildParameters = new ImageBuildParameters
+            {
+                Dockerfile = "Dockerfile",
+                Tags = new List<string> { $"{image}:{tag}" },
+                Remove = true,
+                ForceRemove = true,
+                NoCache = false,
+            };
+
+            var buildOutput = new List<string>();
+            var progress = new Progress<JSONMessage>(msg =>
+            {
+                if (!string.IsNullOrEmpty(msg.Stream))
+                {
+                    var output = msg.Stream.Trim();
+                    buildOutput.Add(output);
+                    _logger.LogDebug("Build: {Output}", output);
+                }
+                if (msg.Error != null)
+                {
+                    _logger.LogError("Build error: {Error}", msg.Error.Message);
+                }
+            });
+
+            await _client.Images.BuildImageFromDockerfileAsync(
+                buildParameters,
+                tarStream,
+                null,
+                null,
+                progress,
+                cancellationToken);
+
+            // Cleanup tar file
+            try { File.Delete(tarPath); } catch { /* ignore */ }
+
+            // Verify image was created
+            var images = await _client.Images.ListImagesAsync(new ImagesListParameters
+            {
+                Filters = new Dictionary<string, IDictionary<string, bool>>
+                {
+                    ["reference"] = new Dictionary<string, bool> { [$"{image}:{tag}"] = true }
+                }
+            }, cancellationToken);
+
+            return images.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to build image {Image}:{Tag}", image, tag);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Create a tar archive from a directory.
+    /// </summary>
+    private void CreateTarFile(string sourceDirectory, string tarPath)
+    {
+        // Use tar command (available on Linux/macOS, and in Docker containers)
+        var startInfo = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "tar",
+            Arguments = $"-C \"{sourceDirectory}\" -cf \"{tarPath}\" .",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+
+        using var process = System.Diagnostics.Process.Start(startInfo);
+        if (process == null)
+        {
+            throw new InvalidOperationException("Failed to start tar process");
+        }
+
+        process.WaitForExit();
+        if (process.ExitCode != 0)
+        {
+            var error = process.StandardError.ReadToEnd();
+            throw new InvalidOperationException($"tar failed with exit code {process.ExitCode}: {error}");
         }
     }
 

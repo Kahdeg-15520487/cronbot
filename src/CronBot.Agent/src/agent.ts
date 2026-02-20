@@ -83,11 +83,25 @@ export class Agent {
       try {
         await this.pollAndExecuteTask();
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        console.error(`Error in daemon loop: ${errorMsg}`);
+        const timestamp = new Date().toISOString();
+        const errorDetails = this.formatError(error);
+        console.error(`[${timestamp}] Error in daemon loop:`);
+        console.error(`  Type: ${errorDetails.errorType}`);
+        console.error(`  Message: ${errorDetails.shortMessage}`);
+        if (errorDetails.stack) {
+          console.error(`  Stack:`);
+          console.error(errorDetails.stack);
+        }
+        console.error(`  Raw: ${errorDetails.rawError}`);
         this.state.addEntry({
           type: "error",
-          message: errorMsg,
+          message: errorDetails.shortMessage,
+          metadata: {
+            timestamp,
+            errorType: errorDetails.errorType,
+            stack: errorDetails.stack,
+            rawError: errorDetails.rawError,
+          },
         });
         await this.state.save();
       }
@@ -194,9 +208,8 @@ Start by checking for the next available task.`;
           cwd,
           allowedTools,
           mcpServers,
-          // Auto-allow all tools including MCP tools
+          // Bypass permissions for autonomous agent operation (requires non-root user)
           permissionMode: "bypassPermissions",
-          allowDangerouslySkipPermissions: true,
           // API key is read from ANTHROPIC_API_KEY env var
           // Base URL is read from ANTHROPIC_BASE_URL env var
         },
@@ -205,22 +218,45 @@ Start by checking for the next available task.`;
           if (message.subtype === "success") {
             result = message.result;
           } else {
+            const timestamp = new Date().toISOString();
             const errorSubtype = message.subtype;
             const errorDetails = message.errors?.join("; ") ?? "Unknown error";
+            console.error(`[${timestamp}] Agent returned error result:`);
+            console.error(`  Subtype: ${errorSubtype}`);
+            console.error(`  Errors: ${errorDetails}`);
             this.state.addEntry({
               type: "error",
-              message: `Agent error: ${errorSubtype}`,
-              metadata: { errors: message.errors },
+              message: `Agent error: ${errorSubtype} - ${errorDetails}`,
+              metadata: {
+                timestamp,
+                subtype: errorSubtype,
+                errors: message.errors,
+                cwd,
+              },
             });
             result = `Error: ${errorSubtype} - ${errorDetails}`;
           }
         }
       }
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const timestamp = new Date().toISOString();
+      const errorDetails = this.formatError(error);
+      console.error(`[${timestamp}] Error in executeWithAgent:`);
+      console.error(`  Type: ${errorDetails.errorType}`);
+      console.error(`  Message: ${errorDetails.shortMessage}`);
+      if (errorDetails.stack) {
+        console.error(`  Stack:\n${errorDetails.stack}`);
+      }
       this.state.addEntry({
         type: "error",
-        message: errorMsg,
+        message: `executeWithAgent failed: ${errorDetails.shortMessage}`,
+        metadata: {
+          timestamp,
+          errorType: errorDetails.errorType,
+          stack: errorDetails.stack,
+          cwd,
+          allowedTools,
+        },
       });
       await this.state.save();
       throw error;
@@ -274,6 +310,37 @@ Start by checking for the next available task.`;
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Format error for detailed logging
+   */
+  private formatError(error: unknown): {
+    shortMessage: string;
+    errorType: string;
+    stack?: string;
+    rawError: string;
+  } {
+    if (error instanceof Error) {
+      return {
+        shortMessage: error.message,
+        errorType: error.constructor.name,
+        stack: error.stack,
+        rawError: JSON.stringify({
+          name: error.name,
+          message: error.message,
+          stack: error.stack,
+          cause: error.cause,
+        }, null, 2),
+      };
+    }
+
+    const strError = String(error);
+    return {
+      shortMessage: strError,
+      errorType: typeof error,
+      rawError: strError,
+    };
   }
 
   getState(): ReturnType<StateManager["getState"]> {

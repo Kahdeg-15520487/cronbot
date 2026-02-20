@@ -8,6 +8,7 @@ import {
   CheckSquare,
   Bot,
   Users,
+  User,
   Settings,
   LogOut,
 } from 'lucide-react';
@@ -18,7 +19,8 @@ const navigation = [
   { name: 'Projects', href: '/projects', icon: FolderKanban },
   { name: 'Tasks', href: '/tasks', icon: CheckSquare },
   { name: 'Agents', href: '/agents', icon: Bot },
-  { name: 'Team', href: '/team', icon: Users },
+  { name: 'Teams', href: '/teams', icon: Users },
+  { name: 'Users', href: '/users', icon: User },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
@@ -65,7 +67,7 @@ export function Sidebar() {
       <div className="p-4 border-t border-gray-800">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center">
-            <Users className="w-4 h-4" />
+            <User className="w-4 h-4" />
           </div>
           <div>
             <p className="text-sm font-medium">User</p>
