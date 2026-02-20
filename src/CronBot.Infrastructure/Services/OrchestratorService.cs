@@ -71,6 +71,9 @@ public class OrchestratorService
             var apiKey = _configuration["Anthropic:ApiKey"]
                 ?? throw new InvalidOperationException("ANTHROPIC_API_KEY not configured");
             var baseUrl = _configuration["Anthropic:BaseUrl"] ?? "";
+            var model = _configuration["Anthropic:Model"];
+            var maxTokensStr = _configuration["Anthropic:MaxTokens"];
+            int? maxTokens = string.IsNullOrEmpty(maxTokensStr) ? null : int.Parse(maxTokensStr);
             var kanbanUrl = _configuration["Services:KanbanUrl"] ?? "http://api:8080/api";
 
             // Create container name
@@ -84,6 +87,8 @@ public class OrchestratorService
                 project.AutonomyLevel,
                 apiKey,
                 baseUrl,
+                model,
+                maxTokens,
                 kanbanUrl,
                 cancellationToken
             );

@@ -76,6 +76,8 @@ services:
       - RabbitMQ__Password=${RABBITMQ_PASSWORD:-cronbot}
       - Anthropic__ApiKey=${ANTHROPIC_API_KEY}
       - Anthropic__BaseUrl=${ANTHROPIC_BASE_URL:-}
+      - Anthropic__Model=${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
+      - Anthropic__MaxTokens=${ANTHROPIC_MAX_TOKENS:-4096}
       - Services__KanbanUrl=http://api:8080/api
       - ASPNETCORE_ENVIRONMENT=Development
     volumes:

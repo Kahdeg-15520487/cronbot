@@ -33,6 +33,8 @@ public class DockerClientService : IDisposable
         int autonomyLevel,
         string apiKey,
         string? apiBaseUrl,
+        string? model,
+        int? maxTokens,
         string kanbanUrl,
         CancellationToken cancellationToken = default)
     {
@@ -58,6 +60,8 @@ public class DockerClientService : IDisposable
                 $"AUTONOMY_LEVEL={autonomyLevel}",
                 $"ANTHROPIC_API_KEY={apiKey}",
                 $"ANTHROPIC_BASE_URL={apiBaseUrl ?? ""}",
+                $"ANTHROPIC_MODEL={model ?? "claude-sonnet-4-20250514"}",
+                $"ANTHROPIC_MAX_TOKENS={maxTokens ?? 4096}",
                 $"KANBAN_URL={kanbanUrl}",
                 "WORKSPACE_PATH=/workspace",
                 "STATE_PATH=/agent-state",
