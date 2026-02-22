@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tasksApi, projectsApi, Task } from '@/lib/api';
 import { Sidebar } from '@/components/Sidebar';
+import { AuthGuard } from '@/components/AuthGuard';
 import { Plus, CheckSquare, Filter, Search } from 'lucide-react';
 import { useState } from 'react';
 import Link from 'next/link';
@@ -44,8 +45,9 @@ export default function TasksPage() {
   );
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar />
+    <AuthGuard>
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar />
 
       <main className="flex-1 overflow-auto">
         <div className="p-8">
@@ -150,6 +152,7 @@ export default function TasksPage() {
         </div>
       </main>
     </div>
+    </AuthGuard>
   );
 }
 

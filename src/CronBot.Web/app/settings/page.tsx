@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Sidebar } from '@/components/Sidebar';
+import { AuthGuard } from '@/components/AuthGuard';
 import { Settings, User, Bell, Shield, Palette, Globe, Key, Save } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -26,8 +27,9 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar />
+    <AuthGuard>
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar />
 
       <main className="flex-1 overflow-auto">
         <div className="p-8">
@@ -80,6 +82,7 @@ export default function SettingsPage() {
         </div>
       </main>
     </div>
+    </AuthGuard>
   );
 }
 

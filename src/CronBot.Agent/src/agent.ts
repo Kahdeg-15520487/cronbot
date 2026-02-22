@@ -221,22 +221,28 @@ Start by checking for the next available task.`;
     }
 
     return `   - **Git Workflow (MANDATORY)**:
-     a. First, check if the workspace has a git repo: run \`ls -la\` and check for .git folder
-     b. If NO .git folder, CLONE THE REPOSITORY FIRST:
+     a. **NEVER use 'git init'** - always clone from the remote repository
+     b. First, check if the workspace has a git repo: run \`ls -la\` and check for .git folder
+     c. If NO .git folder, you MUST CLONE THE REPOSITORY:
         \`git clone ${repoUrl} .\` (note the dot at the end to clone into current directory)
-     c. Configure git identity: \`git config user.email "agent@cronbot.local"\` and \`git config user.name "CronBot Agent"\`
-     d. Fetch latest: \`git fetch origin\`
-     e. Checkout main branch and pull latest: \`git checkout main && git pull origin main\`
-     f. **NEVER COMMIT DIRECTLY TO MAIN** - Create a feature branch:
+        This automatically sets up the 'origin' remote
+     d. After cloning, verify the remote: \`git remote -v\` (should show origin)
+     e. Configure git identity: \`git config user.email "agent@cronbot.local"\` and \`git config user.name "CronBot Agent"\`
+     f. Fetch and pull latest: \`git fetch origin && git checkout main && git pull origin main\`
+     g. **NEVER COMMIT DIRECTLY TO MAIN** - Create a feature branch:
         \`git checkout -b task/TASK-NUMBER-TASK-SLUG\`
         - Branch naming: use task number from the task data (e.g., task/1-setup-project)
         - If task type is "bug", use "fix/" prefix instead (e.g., fix/42-fix-login-crash)
-     g. **IMPORTANT**: Set the branch on the task using \`set_task_branch\` MCP tool
-     h. Make sure you're on the new branch before making changes: \`git branch\`
-     i. Stage changes as you work: \`git add .\`
-     j. Commit frequently with meaningful messages: \`git commit -m "descriptive message"\`
-     k. When done, PUSH YOUR FEATURE BRANCH: \`git push -u origin HEAD\`
-     l. Create a pull request using \`create_pull_request\` MCP tool - this moves task to Review`;
+     h. **IMPORTANT**: Set the branch on the task using \`set_task_branch\` MCP tool
+     i. Make sure you're on the new branch before making changes: \`git branch\`
+     j. Stage changes as you work: \`git add .\`
+     k. Commit frequently with meaningful messages: \`git commit -m "descriptive message"\`
+     l. **CRITICAL**: When done, you MUST PUSH YOUR FEATURE BRANCH: \`git push -u origin HEAD\`
+     m. Create a pull request using \`create_pull_request\` MCP tool - this moves task to Review
+
+     **IF YOU FORGET TO CLONE AND USE git init INSTEAD, ADD THE REMOTE:**
+     \`git remote add origin ${repoUrl}\`
+     Then pull and rebase: \`git fetch origin && git rebase origin/main\``;
   }
 
   /**

@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { projectsApi, tasksApi, agentsApi, teamsApi } from '@/lib/api';
 import { Sidebar } from '@/components/Sidebar';
+import { AuthGuard } from '@/components/AuthGuard';
 import Link from 'next/link';
 import { LayoutDashboard, FolderKanban, Users, Bot, CheckCircle, Clock, AlertCircle, Play } from 'lucide-react';
 
@@ -59,131 +60,133 @@ export default function HomePage() {
   const workingAgents = agents?.filter((a) => a.status === 'working').slice(0, 5);
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar />
+    <AuthGuard>
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar />
 
-      <main className="flex-1 overflow-auto">
-        <div className="p-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-8">
-            Welcome to CronBot
-          </h1>
+        <main className="flex-1 overflow-auto">
+          <div className="p-8">
+            <h1 className="text-3xl font-bold text-gray-900 mb-8">
+              Welcome to CronBot
+            </h1>
 
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <StatCard
-              title="Active Projects"
-              value={stats.activeProjects}
-              icon={<FolderKanban className="w-6 h-6" />}
-              href="/projects"
-              color="blue"
-            />
-            <StatCard
-              title="Running Agents"
-              value={stats.runningAgents}
-              icon={<Bot className="w-6 h-6" />}
-              href="/agents"
-              color="green"
-            />
-            <StatCard
-              title="Tasks Completed"
-              value={stats.tasksCompleted}
-              icon={<CheckCircle className="w-6 h-6" />}
-              href="/tasks?status=done"
-              color="purple"
-            />
-            <StatCard
-              title="Teams"
-              value={stats.teamMembers}
-              icon={<Users className="w-6 h-6" />}
-              href="/team"
-              color="gray"
-            />
-          </div>
-
-          {/* Secondary Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <MiniStatCard
-              title="In Progress"
-              value={stats.tasksInProgress}
-              icon={<Play className="w-4 h-4" />}
-              color="yellow"
-            />
-            <MiniStatCard
-              title="Blocked"
-              value={stats.tasksBlocked}
-              icon={<AlertCircle className="w-4 h-4" />}
-              color="red"
-            />
-            <MiniStatCard
-              title="Total Tasks"
-              value={tasks?.length || 0}
-              icon={<Clock className="w-4 h-4" />}
-              color="gray"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Recent Tasks */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold">Recent Tasks</h2>
-                <Link href="/tasks" className="text-primary-600 hover:underline text-sm">
-                  View all
-                </Link>
-              </div>
-              {recentTasks && recentTasks.length > 0 ? (
-                <div className="space-y-3">
-                  {recentTasks.map((task) => (
-                    <TaskRow key={task.id} task={task} />
-                  ))}
-                </div>
-              ) : (
-                <p className="text-gray-500 text-center py-8">No tasks yet</p>
-              )}
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              <StatCard
+                title="Active Projects"
+                value={stats.activeProjects}
+                icon={<FolderKanban className="w-6 h-6" />}
+                href="/projects"
+                color="blue"
+              />
+              <StatCard
+                title="Running Agents"
+                value={stats.runningAgents}
+                icon={<Bot className="w-6 h-6" />}
+                href="/agents"
+                color="green"
+              />
+              <StatCard
+                title="Tasks Completed"
+                value={stats.tasksCompleted}
+                icon={<CheckCircle className="w-6 h-6" />}
+                href="/tasks?status=done"
+                color="purple"
+              />
+              <StatCard
+                title="Teams"
+                value={stats.teamMembers}
+                icon={<Users className="w-6 h-6" />}
+                href="/team"
+                color="gray"
+              />
             </div>
 
-            {/* Working Agents */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold">Active Agents</h2>
-                <Link href="/agents" className="text-primary-600 hover:underline text-sm">
-                  View all
-                </Link>
-              </div>
-              {workingAgents && workingAgents.length > 0 ? (
-                <div className="space-y-3">
-                  {workingAgents.map((agent) => (
-                    <AgentRow key={agent.id} agent={agent} projects={projects || []} />
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <Bot className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                  <p className="text-gray-500">No active agents</p>
-                  <Link
-                    href="/agents"
-                    className="inline-block mt-2 text-primary-600 hover:underline text-sm"
-                  >
-                    Spawn an agent
+            {/* Secondary Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+              <MiniStatCard
+                title="In Progress"
+                value={stats.tasksInProgress}
+                icon={<Play className="w-4 h-4" />}
+                color="yellow"
+              />
+              <MiniStatCard
+                title="Blocked"
+                value={stats.tasksBlocked}
+                icon={<AlertCircle className="w-4 h-4" />}
+                color="red"
+              />
+              <MiniStatCard
+                title="Total Tasks"
+                value={tasks?.length || 0}
+                icon={<Clock className="w-4 h-4" />}
+                color="gray"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Recent Tasks */}
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-semibold">Recent Tasks</h2>
+                  <Link href="/tasks" className="text-primary-600 hover:underline text-sm">
+                    View all
                   </Link>
                 </div>
-              )}
-            </div>
-          </div>
+                {recentTasks && recentTasks.length > 0 ? (
+                  <div className="space-y-3">
+                    {recentTasks.map((task) => (
+                      <TaskRow key={task.id} task={task} />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-center py-8">No tasks yet</p>
+                )}
+              </div>
 
-          {/* Quick Actions */}
-          <div className="mt-8 bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <QuickActionButton label="Create Project" href="/projects" />
-              <QuickActionButton label="Add Task" href="/tasks" />
-              <QuickActionButton label="Spawn Agent" href="/agents" />
-              <QuickActionButton label="Create Team" href="/team" />
+              {/* Working Agents */}
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-semibold">Active Agents</h2>
+                  <Link href="/agents" className="text-primary-600 hover:underline text-sm">
+                    View all
+                  </Link>
+                </div>
+                {workingAgents && workingAgents.length > 0 ? (
+                  <div className="space-y-3">
+                    {workingAgents.map((agent) => (
+                      <AgentRow key={agent.id} agent={agent} projects={projects || []} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Bot className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                    <p className="text-gray-500">No active agents</p>
+                    <Link
+                      href="/agents"
+                      className="inline-block mt-2 text-primary-600 hover:underline text-sm"
+                    >
+                      Spawn an agent
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="mt-8 bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <QuickActionButton label="Create Project" href="/projects" />
+                <QuickActionButton label="Add Task" href="/tasks" />
+                <QuickActionButton label="Spawn Agent" href="/agents" />
+                <QuickActionButton label="Create Team" href="/team" />
+              </div>
             </div>
           </div>
-        </div>
-      </main>
-    </div>
+        </main>
+      </div>
+    </AuthGuard>
   );
 }
 

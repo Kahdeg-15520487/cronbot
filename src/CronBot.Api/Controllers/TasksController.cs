@@ -467,6 +467,24 @@ public class TasksController : ControllerBase
         // Check if PR already exists
         if (!string.IsNullOrEmpty(task.GitPrUrl))
         {
+            // If GitPrId is missing but GitPrUrl is set, try to fix it
+            if (!task.GitPrId.HasValue)
+            {
+                // Try to extract PR number from URL or fetch from Gitea
+                var existingPrs = await _gitService.ListPullRequestsAsync(owner, repoName, "all");
+                var matchingPr = existingPrs.FirstOrDefault(pr =>
+                    pr.Head?.Ref == task.GitBranch ||
+                    pr.HtmlUrl == task.GitPrUrl);
+
+                if (matchingPr != null)
+                {
+                    task.GitPrId = matchingPr.Number;
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation(
+                        "Fixed missing GitPrId for task {TaskId}: set to PR #{PRNumber}",
+                        task.Id, matchingPr.Number);
+                }
+            }
             return Ok(new PullRequestResponse
             {
                 TaskId = task.Id,
@@ -1075,7 +1093,7 @@ public class TasksController : ControllerBase
             owner,
             repoName,
             task.GitPrId.Value,
-            request.Body ?? "",
+            !string.IsNullOrWhiteSpace(request.Body) ? request.Body : $"Review: {reviewType}",
             reviewType);
 
         if (review == null)

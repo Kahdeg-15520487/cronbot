@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi, teamsApi, tasksApi, Project } from '@/lib/api';
 import { Sidebar } from '@/components/Sidebar';
+import { AuthGuard } from '@/components/AuthGuard';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Plus, FolderKanban, MoreVertical, ArrowRight, Bot, Sparkles, CheckCircle } from 'lucide-react';
@@ -21,8 +22,9 @@ export default function ProjectsPage() {
   });
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar />
+    <AuthGuard>
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar />
 
       <main className="flex-1 overflow-auto">
         <div className="p-8">
@@ -65,6 +67,7 @@ export default function ProjectsPage() {
         </div>
       </main>
     </div>
+    </AuthGuard>
   );
 }
 

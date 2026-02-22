@@ -13,6 +13,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { useAuth } from '@/lib/auth-context';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -26,6 +27,7 @@ const navigation = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { user, logout } = useAuth();
 
   return (
     <aside className="w-64 bg-gray-900 text-white flex flex-col">
@@ -66,15 +68,26 @@ export function Sidebar() {
 
       <div className="p-4 border-t border-gray-800">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center">
-            <User className="w-4 h-4" />
-          </div>
+          {user?.avatarUrl ? (
+            <img
+              src={user.avatarUrl}
+              alt={user.displayName || user.username}
+              className="w-8 h-8 rounded-full"
+            />
+          ) : (
+            <div className="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center">
+              <User className="w-4 h-4" />
+            </div>
+          )}
           <div>
-            <p className="text-sm font-medium">User</p>
-            <p className="text-xs text-gray-400">user@example.com</p>
+            <p className="text-sm font-medium">{user?.displayName || user?.username || 'User'}</p>
+            <p className="text-xs text-gray-400">{user?.email || ''}</p>
           </div>
         </div>
-        <button className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+        <button
+          onClick={logout}
+          className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+        >
           <LogOut className="w-4 h-4" />
           Sign out
         </button>

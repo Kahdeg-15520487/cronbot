@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { agentsApi, projectsApi, Agent } from '@/lib/api';
 import { Sidebar } from '@/components/Sidebar';
+import { AuthGuard } from '@/components/AuthGuard';
 import { Bot, Plus, Play, Square, RefreshCw, Activity, Cpu, HardDrive, Trash2, FileText, X, ArrowUpCircle, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
 import Link from 'next/link';
@@ -46,8 +47,9 @@ export default function AgentsPage() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar />
+    <AuthGuard>
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar />
 
       <main className="flex-1 overflow-auto">
         <div className="p-8">
@@ -122,6 +124,7 @@ export default function AgentsPage() {
         </div>
       </main>
     </div>
+    </AuthGuard>
   );
 }
 

@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tasksApi, projectsApi, Task, TaskLog, GitDiffSummary, TaskDiffResponse, ReviewResponse } from '@/lib/api';
 import { Sidebar } from '@/components/Sidebar';
+import { AuthGuard } from '@/components/AuthGuard';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -169,28 +170,32 @@ export default function TaskDetailPage() {
 
   if (taskLoading) {
     return (
-      <div className="flex h-screen bg-gray-50">
-        <Sidebar />
-        <main className="flex-1 flex items-center justify-center">
-          <div className="text-gray-500">Loading task...</div>
-        </main>
-      </div>
+      <AuthGuard>
+        <div className="flex h-screen bg-gray-50">
+          <Sidebar />
+          <main className="flex-1 flex items-center justify-center">
+            <div className="text-gray-500">Loading task...</div>
+          </main>
+        </div>
+      </AuthGuard>
     );
   }
 
   if (!task) {
     return (
-      <div className="flex h-screen bg-gray-50">
-        <Sidebar />
-        <main className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <h2 className="text-xl font-semibold text-gray-900">Task not found</h2>
-            <Link href="/tasks" className="text-primary-600 hover:underline mt-2 block">
-              Back to tasks
-            </Link>
-          </div>
-        </main>
-      </div>
+      <AuthGuard>
+        <div className="flex h-screen bg-gray-50">
+          <Sidebar />
+          <main className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <h2 className="text-xl font-semibold text-gray-900">Task not found</h2>
+              <Link href="/tasks" className="text-primary-600 hover:underline mt-2 block">
+                Back to tasks
+              </Link>
+            </div>
+          </main>
+        </div>
+      </AuthGuard>
     );
   }
 
@@ -198,8 +203,9 @@ export default function TaskDetailPage() {
   const statusColor = statusConfig[task.status]?.color || 'bg-gray-100 text-gray-700';
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar />
+    <AuthGuard>
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar />
 
       <main className="flex-1 overflow-auto">
         <div className="p-8">
@@ -779,6 +785,7 @@ export default function TaskDetailPage() {
         </div>
       </main>
     </div>
+    </AuthGuard>
   );
 }
 

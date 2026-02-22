@@ -36,6 +36,9 @@ public static class DependencyInjection
         // Register Preview service
         services.AddScoped<PreviewService>();
 
+        // Register Auth service
+        services.AddScoped<AuthService>();
+
         return services;
     }
 }

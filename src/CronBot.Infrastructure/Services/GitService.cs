@@ -61,7 +61,7 @@ public class GitService
                 Encoding.ASCII.GetBytes($"{_giteaUsername}:{_giteaPassword}"));
 
             // Create a temporary request to get/create a token
-            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/users/{username}/tokens");
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/users/{_giteaUsername}/tokens");
             request.Headers.Authorization = new AuthenticationHeaderValue("Basic", basicAuth);
             request.Content = JsonContent.Create(new { name = "cronbot-api-token" });
 

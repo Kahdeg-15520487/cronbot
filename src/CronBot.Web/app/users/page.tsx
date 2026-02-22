@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi, User } from '@/lib/api';
 import { Sidebar } from '@/components/Sidebar';
+import { AuthGuard } from '@/components/AuthGuard';
 import { Users, Plus, Edit, Trash2, UserCircle, X } from 'lucide-react';
 import { useState } from 'react';
 
@@ -19,8 +20,9 @@ export default function UsersPage() {
   });
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar />
+    <AuthGuard>
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar />
 
       <main className="flex-1 overflow-auto">
         <div className="p-8">
@@ -136,6 +138,7 @@ export default function UsersPage() {
         </div>
       </main>
     </div>
+    </AuthGuard>
   );
 }
 

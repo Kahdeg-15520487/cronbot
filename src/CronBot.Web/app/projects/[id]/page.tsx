@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi, tasksApi, Task } from '@/lib/api';
 import { Sidebar } from '@/components/Sidebar';
+import { AuthGuard } from '@/components/AuthGuard';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Plus, Bot, Settings, ExternalLink } from 'lucide-react';
@@ -64,33 +65,38 @@ export default function ProjectDetailPage() {
 
   if (projectLoading) {
     return (
-      <div className="flex h-screen bg-gray-50">
-        <Sidebar />
-        <main className="flex-1 flex items-center justify-center">
-          <div className="text-gray-500">Loading project...</div>
-        </main>
-      </div>
+      <AuthGuard>
+        <div className="flex h-screen bg-gray-50">
+          <Sidebar />
+          <main className="flex-1 flex items-center justify-center">
+            <div className="text-gray-500">Loading project...</div>
+          </main>
+        </div>
+      </AuthGuard>
     );
   }
 
   if (!project) {
     return (
-      <div className="flex h-screen bg-gray-50">
-        <Sidebar />
-        <main className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <h2 className="text-xl font-semibold text-gray-900">Project not found</h2>
-            <Link href="/projects" className="text-primary-600 hover:underline mt-2 block">
-              Back to projects
-            </Link>
-          </div>
-        </main>
-      </div>
+      <AuthGuard>
+        <div className="flex h-screen bg-gray-50">
+          <Sidebar />
+          <main className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <h2 className="text-xl font-semibold text-gray-900">Project not found</h2>
+              <Link href="/projects" className="text-primary-600 hover:underline mt-2 block">
+                Back to projects
+              </Link>
+            </div>
+          </main>
+        </div>
+      </AuthGuard>
     );
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <AuthGuard>
+      <div className="flex h-screen bg-gray-50">
       <Sidebar />
 
       <main className="flex-1 overflow-hidden flex flex-col">
@@ -176,6 +182,7 @@ export default function ProjectDetailPage() {
         )}
       </main>
     </div>
+    </AuthGuard>
   );
 }
 

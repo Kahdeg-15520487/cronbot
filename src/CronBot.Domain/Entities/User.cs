@@ -18,6 +18,11 @@ public class User : AuditableEntity
     public string? Email { get; set; }
 
     /// <summary>
+    /// Hashed password for local authentication.
+    /// </summary>
+    public string? PasswordHash { get; set; }
+
+    /// <summary>
     /// Telegram user ID for bot interactions.
     /// </summary>
     public long? TelegramId { get; set; }

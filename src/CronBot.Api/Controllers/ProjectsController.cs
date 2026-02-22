@@ -123,11 +123,22 @@ public class ProjectsController : ControllerBase
             return BadRequest("No team available. Create a team first.");
         }
 
+        // Generate a unique slug
+        var baseSlug = request.Slug ?? GenerateSlug(request.Name);
+        var slug = baseSlug;
+        var counter = 1;
+
+        while (await _context.Projects.AnyAsync(p => p.TeamId == team.Id && p.Slug == slug))
+        {
+            slug = $"{baseSlug}-{counter}";
+            counter++;
+        }
+
         var project = new Project
         {
             TeamId = team.Id,
             Name = request.Name,
-            Slug = request.Slug,
+            Slug = slug,
             Description = request.Description,
             GitMode = request.GitMode,
             ExternalGitUrl = request.ExternalGitUrl,
@@ -194,9 +205,10 @@ public class ProjectsController : ControllerBase
         var initialTask = new TaskEntity
         {
             ProjectId = project.Id,
+            BoardId = board.Id,
             Number = 1,
-            Title = "Set up project structure",
-            Description = "Initialize the project with basic structure and configuration. Review project requirements and plan the implementation.",
+            Title = "Set up project tasks in kanban board's backlog",
+            Description = "Initialize the project with beginning tasks and ideas. Review project requirements create tasks regarding the implementation plan.",
             Type = TaskType.Task,
             Status = TaskStatus.Sprint, // Put in Sprint so agent picks it up
             AssigneeType = "Agent"
@@ -404,5 +416,37 @@ public class ProjectsController : ControllerBase
             .ToListAsync();
 
         return Ok(tasks);
+    }
+
+    /// <summary>
+    /// Generates a URL-friendly slug from a name.
+    /// </summary>
+    private static string GenerateSlug(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "project";
+
+        // Convert to lowercase and replace spaces with hyphens
+        var slug = name.ToLowerInvariant()
+            .Replace(" ", "-")
+            .Replace("_", "-");
+
+        // Remove invalid characters (keep only alphanumeric and hyphens)
+        slug = new string(slug.Where(c => char.IsLetterOrDigit(c) || c == '-').ToArray());
+
+        // Remove consecutive hyphens
+        while (slug.Contains("--"))
+        {
+            slug = slug.Replace("--", "-");
+        }
+
+        // Trim hyphens from start and end
+        slug = slug.Trim('-');
+
+        // Ensure slug is not empty
+        if (string.IsNullOrEmpty(slug))
+            slug = "project";
+
+        return slug;
     }
 }
