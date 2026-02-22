@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Task, tasksApi } from '@/lib/api';
 import { useState } from 'react';
 import clsx from 'clsx';
+import Link from 'next/link';
 
 interface Column {
   id: string;
@@ -122,12 +123,13 @@ function TaskCard({ task, onDragStart, onDragEnd, isDragging }: TaskCardProps) {
   };
 
   return (
-    <div
+    <Link
+      href={`/tasks/${task.id}`}
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       className={clsx(
-        'bg-white rounded-lg shadow-sm p-3 cursor-grab active:cursor-grabbing border border-gray-200 hover:shadow-md transition-shadow',
+        'block bg-white rounded-lg shadow-sm p-3 cursor-grab active:cursor-grabbing border border-gray-200 hover:shadow-md hover:border-primary-300 transition-all',
         isDragging && 'opacity-50'
       )}
     >
@@ -170,6 +172,6 @@ function TaskCard({ task, onDragStart, onDragEnd, isDragging }: TaskCardProps) {
           </div>
         )}
       </div>
-    </div>
+    </Link>
   );
 }
