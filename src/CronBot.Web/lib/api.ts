@@ -162,6 +162,47 @@ export interface Agent {
   commitsMade: number;
 }
 
+export interface TaskLog {
+  id: string;
+  taskId: string;
+  type: string;
+  level: string;
+  message: string;
+  details?: string;
+  source?: string;
+  gitCommit?: string;
+  gitBranch?: string;
+  filesAffected?: string[];
+  createdAt: string;
+}
+
+export interface GitDiffSummary {
+  branch?: string;
+  commitCount: number;
+  filesAdded: string[];
+  filesModified: string[];
+  filesDeleted: string[];
+  latestCommit?: string;
+  latestCommitMessage?: string;
+}
+
+export interface TaskWithHistory {
+  task: Task;
+  logs: TaskLog[];
+  diffSummary?: GitDiffSummary;
+}
+
+export interface PullRequestResponse {
+  taskId: string;
+  prNumber: number;
+  prUrl?: string;
+  branch?: string;
+  status: string;
+  merged?: boolean;
+  mergeable?: boolean;
+  message?: string;
+}
+
 // Raw API response types (with number enums)
 interface RawTask {
   id: string;
@@ -298,6 +339,16 @@ export const tasksApi = {
   delete: (id: string) => api.delete(`/tasks/${id}`),
   getComments: (id: string) => api.get(`/tasks/${id}/comments`),
   addComment: (id: string, content: string) => api.post(`/tasks/${id}/comments`, { content }),
+  // Task history and logs
+  getHistory: (id: string) => api.get<TaskWithHistory>(`/tasks/${id}/history`),
+  getLogs: (id: string, params?: { type?: string; level?: string }) =>
+    api.get<TaskLog[]>(`/tasks/${id}/logs`, { params }),
+  // Pull requests
+  getPullRequest: (id: string) => api.get<PullRequestResponse>(`/tasks/${id}/pull-request`),
+  createPullRequest: (id: string, data?: { title?: string; body?: string; baseBranch?: string }) =>
+    api.post<PullRequestResponse>(`/tasks/${id}/pull-request`, data),
+  mergePullRequest: (id: string, data?: { mergeMessage?: string }) =>
+    api.post<PullRequestResponse>(`/tasks/${id}/pull-request/merge`, data),
 };
 
 export const agentsApi = {

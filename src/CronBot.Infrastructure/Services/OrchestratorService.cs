@@ -76,6 +76,25 @@ public class OrchestratorService
             int? maxTokens = string.IsNullOrEmpty(maxTokensStr) ? null : int.Parse(maxTokensStr);
             var kanbanUrl = _configuration["Services:KanbanUrl"] ?? "http://api:8080/api";
 
+            // Get Gitea configuration for git branching workflow
+            var giteaUrl = _configuration["Gitea:Url"] ?? "http://gitea:3000";
+            var giteaUsername = _configuration["Gitea:Username"] ?? "cronbot";
+            var giteaPassword = _configuration["Gitea:Password"] ?? "cronbot123";
+            var giteaToken = _configuration["Gitea:Token"] ?? "";
+
+            // Build repo URL if project uses internal git
+            string? repoUrl = null;
+            if (project.GitMode == Domain.Enums.GitMode.Internal && !string.IsNullOrEmpty(project.InternalRepoUrl))
+            {
+                // Convert web URL to git URL with credentials
+                // e.g., http://gitea:3000/cronbot/my-project -> http://cronbot:cronbot123@gitea:3000/cronbot/my-project.git
+                var repoUri = new Uri(project.InternalRepoUrl);
+                var credentialPart = !string.IsNullOrEmpty(giteaToken)
+                    ? $"oauth2:{giteaToken}"
+                    : $"{giteaUsername}:{giteaPassword}";
+                repoUrl = $"{repoUri.Scheme}://{credentialPart}@{repoUri.Host}:{repoUri.Port}{repoUri.PathAndQuery}.git";
+            }
+
             // Create container name
             var containerName = $"cronbot-agent-{agent.Id.ToString()[..8]}";
 
@@ -90,6 +109,11 @@ public class OrchestratorService
                 model,
                 maxTokens,
                 kanbanUrl,
+                giteaUrl,
+                giteaUsername,
+                giteaPassword,
+                giteaToken,
+                repoUrl,
                 cancellationToken
             );
 

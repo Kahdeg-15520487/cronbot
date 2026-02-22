@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { tasksApi, projectsApi, Task } from '@/lib/api';
+import { tasksApi, projectsApi, Task, TaskLog, GitDiffSummary } from '@/lib/api';
 import { Sidebar } from '@/components/Sidebar';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -11,6 +11,8 @@ import {
   Trash2,
   MessageSquare,
   GitBranch,
+  GitCommit,
+  GitPullRequest,
   Clock,
   User,
   Bot,
@@ -18,6 +20,15 @@ import {
   CheckCircle,
   Play,
   Calendar,
+  FileText,
+  FilePlus,
+  FileMinus,
+  Terminal,
+  Activity,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  Merge,
 } from 'lucide-react';
 import { useState } from 'react';
 import clsx from 'clsx';
@@ -31,12 +42,29 @@ const statusConfig: Record<string, { color: string; icon: typeof CheckCircle }> 
   done: { color: 'bg-green-100 text-green-700', icon: CheckCircle },
 };
 
+const logTypeConfig: Record<string, { icon: typeof GitCommit; color: string; label: string }> = {
+  StatusChange: { icon: Play, color: 'text-blue-500', label: 'Status changed' },
+  BranchCreated: { icon: GitBranch, color: 'text-purple-500', label: 'Branch created' },
+  Commit: { icon: GitCommit, color: 'text-green-500', label: 'Commit' },
+  Push: { icon: GitBranch, color: 'text-indigo-500', label: 'Pushed' },
+  PullRequestCreated: { icon: GitPullRequest, color: 'text-purple-500', label: 'PR created' },
+  PullRequestMerged: { icon: Merge, color: 'text-green-500', label: 'PR merged' },
+  FilesCreated: { icon: FilePlus, color: 'text-green-500', label: 'Files created' },
+  FilesModified: { icon: FileText, color: 'text-yellow-500', label: 'Files modified' },
+  FilesDeleted: { icon: FileMinus, color: 'text-red-500', label: 'Files deleted' },
+  AgentMessage: { icon: Bot, color: 'text-blue-500', label: 'Agent' },
+  AgentError: { icon: AlertCircle, color: 'text-red-500', label: 'Error' },
+  Command: { icon: Terminal, color: 'text-gray-500', label: 'Command' },
+  CommandOutput: { icon: Terminal, color: 'text-gray-400', label: 'Output' },
+};
+
 export default function TaskDetailPage() {
   const params = useParams();
   const router = useRouter();
   const taskId = params.id as string;
   const [showEditModal, setShowEditModal] = useState(false);
   const [newComment, setNewComment] = useState('');
+  const [activeTab, setActiveTab] = useState<'description' | 'activity'>('description');
 
   const { data: task, isLoading: taskLoading } = useQuery({
     queryKey: ['task', taskId],
@@ -50,6 +78,14 @@ export default function TaskDetailPage() {
     queryKey: ['task-comments', taskId],
     queryFn: async () => {
       const res = await tasksApi.getComments(taskId);
+      return res.data;
+    },
+  });
+
+  const { data: history } = useQuery({
+    queryKey: ['task-history', taskId],
+    queryFn: async () => {
+      const res = await tasksApi.getHistory(taskId);
       return res.data;
     },
   });
@@ -75,6 +111,22 @@ export default function TaskDetailPage() {
     onSuccess: () => {
       setNewComment('');
       queryClient.invalidateQueries({ queryKey: ['task-comments', taskId] });
+    },
+  });
+
+  const prMutation = useMutation({
+    mutationFn: () => tasksApi.createPullRequest(taskId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['task', taskId] });
+      queryClient.invalidateQueries({ queryKey: ['task-history', taskId] });
+    },
+  });
+
+  const mergeMutation = useMutation({
+    mutationFn: () => tasksApi.mergePullRequest(taskId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['task', taskId] });
+      queryClient.invalidateQueries({ queryKey: ['task-history', taskId] });
     },
   });
 
@@ -161,80 +213,185 @@ export default function TaskDetailPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Main Content */}
             <div className="lg:col-span-2 space-y-6">
-              {/* Description */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Description</h2>
-                {task.description ? (
-                  <div className="prose prose-sm max-w-none text-gray-600">
-                    {task.description}
-                  </div>
-                ) : (
-                  <p className="text-gray-400 italic">No description provided</p>
-                )}
+              {/* Tabs */}
+              <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+                <button
+                  onClick={() => setActiveTab('description')}
+                  className={clsx(
+                    'flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors',
+                    activeTab === 'description'
+                      ? 'bg-white text-gray-900 shadow'
+                      : 'text-gray-600 hover:text-gray-900'
+                  )}
+                >
+                  Description
+                </button>
+                <button
+                  onClick={() => setActiveTab('activity')}
+                  className={clsx(
+                    'flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2',
+                    activeTab === 'activity'
+                      ? 'bg-white text-gray-900 shadow'
+                      : 'text-gray-600 hover:text-gray-900'
+                  )}
+                >
+                  <Activity className="w-4 h-4" />
+                  Activity
+                  {history?.logs && history.logs.length > 0 && (
+                    <span className="bg-primary-100 text-primary-700 text-xs px-1.5 py-0.5 rounded-full">
+                      {history.logs.length}
+                    </span>
+                  )}
+                </button>
               </div>
 
-              {/* Comments */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <MessageSquare className="w-5 h-5" />
-                  Comments
-                </h2>
+              {activeTab === 'description' ? (
+                <>
+                  {/* Description */}
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-4">Description</h2>
+                    {task.description ? (
+                      <div className="prose prose-sm max-w-none text-gray-600">
+                        {task.description}
+                      </div>
+                    ) : (
+                      <p className="text-gray-400 italic">No description provided</p>
+                    )}
+                  </div>
 
-                {/* Comment List */}
-                <div className="space-y-4 mb-4">
-                  {comments && comments.length > 0 ? (
-                    comments.map((comment: { id: string; authorType: string; authorId: string; content: string; createdAt: string }) => (
-                      <div key={comment.id} className="flex gap-3">
-                        <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
-                          {comment.authorType === 'agent' ? (
-                            <Bot className="w-4 h-4 text-gray-600" />
-                          ) : (
-                            <User className="w-4 h-4 text-gray-600" />
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium text-gray-900">
-                              {comment.authorType === 'agent' ? 'Agent' : 'User'}
-                            </span>
-                            <span className="text-xs text-gray-400">
-                              {new Date(comment.createdAt).toLocaleString()}
-                            </span>
+                  {/* Comments */}
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <MessageSquare className="w-5 h-5" />
+                      Comments
+                    </h2>
+
+                    {/* Comment List */}
+                    <div className="space-y-4 mb-4">
+                      {comments && comments.length > 0 ? (
+                        comments.map((comment: { id: string; authorType: string; authorId: string; content: string; createdAt: string }) => (
+                          <div key={comment.id} className="flex gap-3">
+                            <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
+                              {comment.authorType === 'agent' ? (
+                                <Bot className="w-4 h-4 text-gray-600" />
+                              ) : (
+                                <User className="w-4 h-4 text-gray-600" />
+                              )}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="font-medium text-gray-900">
+                                  {comment.authorType === 'agent' ? 'Agent' : 'User'}
+                                </span>
+                                <span className="text-xs text-gray-400">
+                                  {new Date(comment.createdAt).toLocaleString()}
+                                </span>
+                              </div>
+                              <p className="text-gray-600">{comment.content}</p>
+                            </div>
                           </div>
-                          <p className="text-gray-600">{comment.content}</p>
+                        ))
+                      ) : (
+                        <p className="text-gray-400 text-center py-4">No comments yet</p>
+                      )}
+                    </div>
+
+                    {/* Add Comment */}
+                    <div className="flex gap-3">
+                      <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <User className="w-4 h-4 text-primary-600" />
+                      </div>
+                      <div className="flex-1">
+                        <textarea
+                          value={newComment}
+                          onChange={(e) => setNewComment(e.target.value)}
+                          placeholder="Add a comment..."
+                          className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                          rows={2}
+                        />
+                        <div className="flex justify-end mt-2">
+                          <button
+                            onClick={() => commentMutation.mutate()}
+                            disabled={!newComment.trim() || commentMutation.isPending}
+                            className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+                          >
+                            {commentMutation.isPending ? 'Posting...' : 'Post Comment'}
+                          </button>
                         </div>
                       </div>
-                    ))
-                  ) : (
-                    <p className="text-gray-400 text-center py-4">No comments yet</p>
-                  )}
-                </div>
-
-                {/* Add Comment */}
-                <div className="flex gap-3">
-                  <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <User className="w-4 h-4 text-primary-600" />
-                  </div>
-                  <div className="flex-1">
-                    <textarea
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      placeholder="Add a comment..."
-                      className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
-                      rows={2}
-                    />
-                    <div className="flex justify-end mt-2">
-                      <button
-                        onClick={() => commentMutation.mutate()}
-                        disabled={!newComment.trim() || commentMutation.isPending}
-                        className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
-                      >
-                        {commentMutation.isPending ? 'Posting...' : 'Post Comment'}
-                      </button>
                     </div>
                   </div>
+                </>
+              ) : (
+                /* Activity Tab */
+                <div className="space-y-6">
+                  {/* Git Diff Summary */}
+                  {history?.diffSummary && (
+                    <div className="bg-white rounded-lg shadow p-6">
+                      <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                        <GitBranch className="w-5 h-5" />
+                        Changes Summary
+                      </h2>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <div className="text-2xl font-bold text-gray-900">
+                            {history.diffSummary.commitCount}
+                          </div>
+                          <div className="text-sm text-gray-500">Commits</div>
+                        </div>
+                        <div className="bg-green-50 rounded-lg p-3">
+                          <div className="text-2xl font-bold text-green-600">
+                            {history.diffSummary.filesAdded.length}
+                          </div>
+                          <div className="text-sm text-green-600">Files Added</div>
+                        </div>
+                        <div className="bg-yellow-50 rounded-lg p-3">
+                          <div className="text-2xl font-bold text-yellow-600">
+                            {history.diffSummary.filesModified.length}
+                          </div>
+                          <div className="text-sm text-yellow-600">Files Modified</div>
+                        </div>
+                        <div className="bg-red-50 rounded-lg p-3">
+                          <div className="text-2xl font-bold text-red-600">
+                            {history.diffSummary.filesDeleted.length}
+                          </div>
+                          <div className="text-sm text-red-600">Files Deleted</div>
+                        </div>
+                      </div>
+
+                      {history.diffSummary.latestCommit && (
+                        <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                          <div className="text-sm text-gray-500">Latest Commit</div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <code className="text-sm bg-gray-200 px-2 py-0.5 rounded font-mono">
+                              {history.diffSummary.latestCommit.slice(0, 7)}
+                            </code>
+                            <span className="text-gray-700">{history.diffSummary.latestCommitMessage}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Activity Timeline */}
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-4">Activity Timeline</h2>
+                    {history?.logs && history.logs.length > 0 ? (
+                      <div className="space-y-4">
+                        {history.logs.map((log: TaskLog) => {
+                          const config = logTypeConfig[log.type] || { icon: Activity, color: 'text-gray-500', label: log.type };
+                          const Icon = config.icon;
+                          return (
+                            <ActivityLogItem key={log.id} log={log} icon={Icon} config={config} />
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-gray-400 text-center py-8">No activity yet</p>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Sidebar */}
@@ -312,15 +469,45 @@ export default function TaskDetailPage() {
                           href={task.gitPrUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-primary-600 hover:underline"
+                          className="text-primary-600 hover:underline flex items-center gap-1"
                         >
                           View PR
+                          <ExternalLink className="w-3 h-3" />
                         </a>
                       </dd>
                     </div>
                   )}
                 </dl>
               </div>
+
+              {/* PR Actions */}
+              {task.gitBranch && !task.gitPrUrl && (
+                <div className="bg-white rounded-lg shadow p-6">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Pull Request</h2>
+                  <button
+                    onClick={() => prMutation.mutate()}
+                    disabled={prMutation.isPending}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+                  >
+                    <GitPullRequest className="w-4 h-4" />
+                    {prMutation.isPending ? 'Creating...' : 'Create Pull Request'}
+                  </button>
+                </div>
+              )}
+
+              {task.gitPrUrl && task.status !== 'done' && (
+                <div className="bg-white rounded-lg shadow p-6">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Merge PR</h2>
+                  <button
+                    onClick={() => mergeMutation.mutate()}
+                    disabled={mergeMutation.isPending}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                  >
+                    <Merge className="w-4 h-4" />
+                    {mergeMutation.isPending ? 'Merging...' : 'Merge Pull Request'}
+                  </button>
+                </div>
+              )}
 
               {/* Timeline */}
               <div className="bg-white rounded-lg shadow p-6">
@@ -358,6 +545,69 @@ export default function TaskDetailPage() {
           )}
         </div>
       </main>
+    </div>
+  );
+}
+
+function ActivityLogItem({ log, icon: Icon, config }: { log: TaskLog; icon: typeof GitCommit; config: { icon: typeof GitCommit; color: string; label: string } }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="flex gap-3">
+      <div className={clsx('w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-gray-100', config.color)}>
+        <Icon className="w-4 h-4" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="font-medium text-gray-900">{config.label}</span>
+          <span className="text-xs text-gray-400">
+            {new Date(log.createdAt).toLocaleString()}
+          </span>
+        </div>
+        <p className="text-gray-600">{log.message}</p>
+
+        {log.gitCommit && (
+          <code className="text-xs bg-gray-100 px-2 py-0.5 rounded mt-1 inline-block">
+            {log.gitCommit.slice(0, 7)}
+          </code>
+        )}
+
+        {log.filesAffected && log.filesAffected.length > 0 && (
+          <div className="mt-2">
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="text-sm text-primary-600 hover:underline flex items-center gap-1"
+            >
+              {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              {log.filesAffected.length} file{log.filesAffected.length !== 1 ? 's' : ''}
+            </button>
+            {expanded && (
+              <ul className="mt-2 space-y-1 text-sm text-gray-500">
+                {log.filesAffected.map((file, i) => (
+                  <li key={i} className="font-mono">{file}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {log.details && (
+          <div className="mt-2">
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="text-sm text-primary-600 hover:underline flex items-center gap-1"
+            >
+              {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              View details
+            </button>
+            {expanded && (
+              <pre className="mt-2 p-3 bg-gray-900 text-gray-100 rounded-lg text-xs overflow-x-auto">
+                {log.details}
+              </pre>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

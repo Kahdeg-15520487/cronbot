@@ -30,6 +30,13 @@ const configSchema = z.object({
   retryDelayMs: z.coerce.number().default(10000),
   blockerWaitMs: z.coerce.number().default(30000),
 
+  // Git Configuration (for task branching)
+  giteaUrl: z.string().optional(),
+  giteaUsername: z.string().optional(),
+  giteaPassword: z.string().optional(),
+  giteaToken: z.string().optional(),
+  repoUrl: z.string().optional(),
+
   // MCP Configuration
   kanbanUrl: z.string().url().optional(),
   mcpServers: z.record(z.string(), z.any()).optional(),
@@ -77,5 +84,12 @@ export function loadConfig(): AgentConfig {
 
     kanbanUrl: optionalString(process.env.KANBAN_URL),
     mcpServers,
+
+    // Git Configuration
+    giteaUrl: optionalString(process.env.GITEA_URL),
+    giteaUsername: optionalString(process.env.GITEA_USERNAME),
+    giteaPassword: optionalString(process.env.GITEA_PASSWORD),
+    giteaToken: optionalString(process.env.GITEA_TOKEN),
+    repoUrl: optionalString(process.env.REPO_URL),
   });
 }

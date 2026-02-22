@@ -61,6 +61,62 @@ services:
       <<: *default-healthcheck
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
 
+  gitea:
+    image: gitea/gitea:latest
+    environment:
+      # Server config
+      - GITEA__server__ROOT_URL=http://localhost:3001/
+      - GITEA__server__HTTP_PORT=3000
+      - GITEA__server__DOMAIN=localhost
+      # Security - lock installation
+      - GITEA__security__INSTALL_LOCK=true
+      - GITEA__security__SECRET_KEY=${GITEA_SECRET_KEY:-cronbot-gitea-secret}
+      - GITEA__security__INTERNAL_TOKEN=${GITEA_INTERNAL_TOKEN:-cronbot-internal-token}
+      # Service settings
+      - GITEA__service__DISABLE_REGISTRATION=false
+      - GITEA__service__REQUIRE_SIGNIN_VIEW=false
+      - GITEA__service__DEFAULT_ALLOW_CREATE_ORGANIZATION=true
+      # Repository settings
+      - GITEA__repository__DEFAULT_BRANCH=main
+      # Database (SQLite - built-in)
+      - GITEA__database__DB_TYPE=sqlite3
+      # OAuth2 settings for token generation
+      - GITEA__oauth2__ENABLED=true
+      - GITEA__oauth2__ACCESS_TOKEN_EXPIRATION_TIME=315360000
+    volumes:
+      - gitea-data:/data
+    ports:
+      - "3001:3000"
+      - "2222:22"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/api/v1/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # Gitea init container - creates admin user on first run
+  gitea-init:
+    image: gitea/gitea:latest
+    depends_on:
+      gitea:
+        condition: service_healthy
+    volumes:
+      - gitea-data:/data
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        # Check if user exists via API (use -f to fail on HTTP errors)
+        if curl -sf -u cronbot:cronbot123 http://gitea:3000/api/v1/user > /dev/null 2>&1; then
+          echo "Admin user already exists"
+          exit 0
+        fi
+
+        # Create admin user with correct config path
+        echo "Creating admin user..."
+        su git -c "gitea -c /data/gitea/conf/app.ini admin user create --username cronbot --password cronbot123 --email admin@cronbot.local --must-change-password=false --admin" 2>&1
+        echo "Gitea initialization complete"
+
   # ═══════════════════════════════════════════════════════════════
   # CRONBOT SERVICES
   # ═══════════════════════════════════════════════════════════════
@@ -79,6 +135,10 @@ services:
       - Anthropic__Model=${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
       - Anthropic__MaxTokens=${ANTHROPIC_MAX_TOKENS:-4096}
       - Services__KanbanUrl=http://api:8080/api
+      - Gitea__Url=http://gitea:3000
+      - Gitea__Username=${GITEA_USERNAME:-cronbot}
+      - Gitea__Password=${GITEA_PASSWORD:-cronbot123}
+      - Gitea__Token=${GITEA_TOKEN:-}
       - ASPNETCORE_ENVIRONMENT=Development
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -128,11 +188,19 @@ services:
       - KANBAN_URL=http://api:8080/api
       - WORKSPACE_PATH=/workspace
       - STATE_PATH=/agent-state
+      # Git/Gitea configuration for branching workflow
+      - GITEA_URL=http://gitea:3000
+      - GITEA_USERNAME=${GITEA_USERNAME:-cronbot}
+      - GITEA_PASSWORD=${GITEA_PASSWORD:-cronbot123}
+      - GITEA_TOKEN=${GITEA_TOKEN:-}
+      - REPO_URL=${REPO_URL:-}
     volumes:
       - agent-workspace:/workspace
       - agent-state:/agent-state
     depends_on:
       api:
+        condition: service_healthy
+      gitea:
         condition: service_healthy
     profiles:
       - agent
@@ -147,5 +215,6 @@ volumes:
   redis-data:
   rabbitmq-data:
   minio-data:
+  gitea-data:
   agent-workspace:
   agent-state:

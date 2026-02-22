@@ -31,6 +31,7 @@ public class AppDbContext : DbContext
     public DbSet<Sprint> Sprints => Set<Sprint>();
     public DbSet<TaskEntity> Tasks => Set<TaskEntity>();
     public DbSet<TaskComment> TaskComments => Set<TaskComment>();
+    public DbSet<TaskLog> TaskLogs => Set<TaskLog>();
 
     // Agents
     public DbSet<Agent> Agents => Set<Agent>();

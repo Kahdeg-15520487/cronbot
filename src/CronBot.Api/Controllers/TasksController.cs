@@ -2,8 +2,10 @@ using CronBot.Application.DTOs;
 using CronBot.Domain.Entities;
 using CronBot.Domain.Enums;
 using CronBot.Infrastructure.Data;
+using CronBot.Infrastructure.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 using TaskEntity = CronBot.Domain.Entities.Task;
 using TaskStatus = CronBot.Domain.Enums.TaskStatus;
 
@@ -17,10 +19,17 @@ namespace CronBot.Api.Controllers;
 public class TasksController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly GitService _gitService;
+    private readonly ILogger<TasksController> _logger;
 
-    public TasksController(AppDbContext context)
+    public TasksController(
+        AppDbContext context,
+        GitService gitService,
+        ILogger<TasksController> logger)
     {
         _context = context;
+        _gitService = gitService;
+        _logger = logger;
     }
 
     /// <summary>
@@ -401,5 +410,524 @@ public class TasksController : ControllerBase
         };
 
         return CreatedAtAction(nameof(GetTaskComments), new { id = comment.TaskId }, response);
+    }
+
+    /// <summary>
+    /// Creates a pull request for a task's branch.
+    /// </summary>
+    [HttpPost("{id}/pull-request")]
+    [ProducesResponseType(typeof(PullRequestResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<PullRequestResponse>> CreatePullRequest(
+        Guid id,
+        [FromBody] CreatePullRequestRequest? request = null)
+    {
+        var task = await _context.Tasks
+            .Include(t => t.Project)
+            .FirstOrDefaultAsync(t => t.Id == id);
+
+        if (task == null)
+        {
+            return NotFound("Task not found.");
+        }
+
+        if (task.Project == null)
+        {
+            return BadRequest("Task has no associated project.");
+        }
+
+        if (task.Project.GitMode != GitMode.Internal)
+        {
+            return BadRequest("Project does not use internal Git. PRs can only be created for internal repositories.");
+        }
+
+        if (string.IsNullOrEmpty(task.GitBranch))
+        {
+            return BadRequest("Task has no Git branch. The agent needs to create a branch first.");
+        }
+
+        if (string.IsNullOrEmpty(task.Project.InternalRepoUrl))
+        {
+            return BadRequest("Project has no internal repository URL.");
+        }
+
+        // Extract owner and repo name from URL
+        // URL format: http://gitea:3000/owner/repo-name
+        var repoUri = new Uri(task.Project.InternalRepoUrl);
+        var pathParts = repoUri.AbsolutePath.Trim('/').Split('/');
+        if (pathParts.Length < 2)
+        {
+            return BadRequest("Invalid repository URL format.");
+        }
+
+        var owner = pathParts[0];
+        var repoName = pathParts[1];
+
+        // Check if PR already exists
+        if (!string.IsNullOrEmpty(task.GitPrUrl))
+        {
+            return Ok(new PullRequestResponse
+            {
+                TaskId = task.Id,
+                PrNumber = task.GitPrId ?? 0,
+                PrUrl = task.GitPrUrl,
+                Branch = task.GitBranch,
+                Status = "already_exists",
+                Message = "Pull request already exists for this task."
+            });
+        }
+
+        // Create the PR
+        var title = request?.Title ?? $"Task #{task.Number}: {task.Title}";
+        var body = request?.Body ?? $"## Summary\n\n{task.Description ?? "No description provided."}\n\n## Task\n\nCloses #{task.Number}";
+        var baseBranch = request?.BaseBranch ?? "main";
+
+        var pr = await _gitService.CreatePullRequestAsync(
+            owner,
+            repoName,
+            title,
+            task.GitBranch,
+            baseBranch,
+            body);
+
+        if (pr == null)
+        {
+            return BadRequest("Failed to create pull request. Check if the branch exists and has commits.");
+        }
+
+        // Update task with PR info
+        task.GitPrId = pr.Number;
+        task.GitPrUrl = pr.HtmlUrl;
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation(
+            "Created PR #{PRNumber} for task {TaskId} in {Owner}/{RepoName}",
+            pr.Number, task.Id, owner, repoName);
+
+        return Ok(new PullRequestResponse
+        {
+            TaskId = task.Id,
+            PrNumber = pr.Number,
+            PrUrl = pr.HtmlUrl,
+            Branch = task.GitBranch,
+            Status = pr.State,
+            Message = "Pull request created successfully."
+        });
+    }
+
+    /// <summary>
+    /// Gets the pull request for a task.
+    /// </summary>
+    [HttpGet("{id}/pull-request")]
+    [ProducesResponseType(typeof(PullRequestResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PullRequestResponse>> GetPullRequest(Guid id)
+    {
+        var task = await _context.Tasks
+            .Include(t => t.Project)
+            .FirstOrDefaultAsync(t => t.Id == id);
+
+        if (task == null)
+        {
+            return NotFound("Task not found.");
+        }
+
+        if (string.IsNullOrEmpty(task.GitPrUrl))
+        {
+            return Ok(new PullRequestResponse
+            {
+                TaskId = task.Id,
+                PrNumber = 0,
+                PrUrl = null,
+                Branch = task.GitBranch,
+                Status = "none",
+                Message = "No pull request exists for this task."
+            });
+        }
+
+        // Get fresh PR status from Gitea
+        if (task.Project?.GitMode == GitMode.Internal &&
+            !string.IsNullOrEmpty(task.Project.InternalRepoUrl) &&
+            task.GitPrId.HasValue)
+        {
+            var repoUri = new Uri(task.Project.InternalRepoUrl);
+            var pathParts = repoUri.AbsolutePath.Trim('/').Split('/');
+            if (pathParts.Length >= 2)
+            {
+                var owner = pathParts[0];
+                var repoName = pathParts[1];
+
+                var pr = await _gitService.GetPullRequestAsync(owner, repoName, task.GitPrId.Value);
+                if (pr != null)
+                {
+                    return Ok(new PullRequestResponse
+                    {
+                        TaskId = task.Id,
+                        PrNumber = pr.Number,
+                        PrUrl = pr.HtmlUrl,
+                        Branch = task.GitBranch,
+                        Status = pr.State,
+                        Merged = pr.Merged,
+                        Mergeable = pr.Mergeable,
+                        Message = pr.Merged ? "Pull request has been merged." : "Pull request is open."
+                    });
+                }
+            }
+        }
+
+        return Ok(new PullRequestResponse
+        {
+            TaskId = task.Id,
+            PrNumber = task.GitPrId ?? 0,
+            PrUrl = task.GitPrUrl,
+            Branch = task.GitBranch,
+            Status = "unknown",
+            Message = "Could not fetch pull request status."
+        });
+    }
+
+    /// <summary>
+    /// Merges the pull request for a task.
+    /// </summary>
+    [HttpPost("{id}/pull-request/merge")]
+    [ProducesResponseType(typeof(PullRequestResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<PullRequestResponse>> MergePullRequest(
+        Guid id,
+        [FromBody] MergePullRequestRequest? request = null)
+    {
+        var task = await _context.Tasks
+            .Include(t => t.Project)
+            .FirstOrDefaultAsync(t => t.Id == id);
+
+        if (task == null)
+        {
+            return NotFound("Task not found.");
+        }
+
+        if (!task.GitPrId.HasValue || string.IsNullOrEmpty(task.GitPrUrl))
+        {
+            return BadRequest("No pull request exists for this task.");
+        }
+
+        if (task.Project?.GitMode != GitMode.Internal || string.IsNullOrEmpty(task.Project.InternalRepoUrl))
+        {
+            return BadRequest("Project does not use internal Git.");
+        }
+
+        var repoUri = new Uri(task.Project.InternalRepoUrl);
+        var pathParts = repoUri.AbsolutePath.Trim('/').Split('/');
+        if (pathParts.Length < 2)
+        {
+            return BadRequest("Invalid repository URL format.");
+        }
+
+        var owner = pathParts[0];
+        var repoName = pathParts[1];
+
+        var success = await _gitService.MergePullRequestAsync(
+            owner,
+            repoName,
+            task.GitPrId.Value,
+            request?.MergeMessage ?? $"Merge PR #{task.GitPrId}: {task.Title}");
+
+        if (!success)
+        {
+            return BadRequest("Failed to merge pull request. It may have conflicts or already be merged.");
+        }
+
+        // Update task status
+        task.Status = TaskStatus.Done;
+        task.CompletedAt = DateTimeOffset.UtcNow;
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation(
+            "Merged PR #{PRNumber} for task {TaskId}",
+            task.GitPrId, task.Id);
+
+        return Ok(new PullRequestResponse
+        {
+            TaskId = task.Id,
+            PrNumber = task.GitPrId.Value,
+            PrUrl = task.GitPrUrl,
+            Branch = task.GitBranch,
+            Status = "merged",
+            Merged = true,
+            Message = "Pull request merged successfully."
+        });
+    }
+
+    /// <summary>
+    /// Gets activity logs for a task.
+    /// </summary>
+    [HttpGet("{id}/logs")]
+    [ProducesResponseType(typeof(IEnumerable<TaskLogResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IEnumerable<TaskLogResponse>>> GetTaskLogs(
+        Guid id,
+        [FromQuery] string? type = null,
+        [FromQuery] string? level = null,
+        [FromQuery] int skip = 0,
+        [FromQuery] int take = 100)
+    {
+        var task = await _context.Tasks.FindAsync(id);
+        if (task == null)
+        {
+            return NotFound("Task not found.");
+        }
+
+        var query = _context.TaskLogs
+            .Where(l => l.TaskId == id)
+            .AsQueryable();
+
+        // Filter by type if specified
+        if (!string.IsNullOrEmpty(type) && Enum.TryParse<TaskLogType>(type, true, out var logType))
+        {
+            query = query.Where(l => l.Type == logType);
+        }
+
+        // Filter by level if specified
+        if (!string.IsNullOrEmpty(level) && Enum.TryParse<TaskLogLevel>(level, true, out var logLevel))
+        {
+            query = query.Where(l => l.Level == logLevel);
+        }
+
+        var logData = await query
+            .OrderByDescending(l => l.CreatedAt)
+            .Skip(skip)
+            .Take(take)
+            .Select(l => new
+            {
+                l.Id,
+                l.TaskId,
+                Type = l.Type.ToString(),
+                Level = l.Level.ToString(),
+                l.Message,
+                l.Details,
+                l.Source,
+                l.GitCommit,
+                l.GitBranch,
+                l.FilesAffected,
+                l.CreatedAt
+            })
+            .ToListAsync();
+
+        var logs = logData.Select(l => new TaskLogResponse
+        {
+            Id = l.Id,
+            TaskId = l.TaskId,
+            Type = l.Type,
+            Level = l.Level,
+            Message = l.Message,
+            Details = l.Details,
+            Source = l.Source,
+            GitCommit = l.GitCommit,
+            GitBranch = l.GitBranch,
+            FilesAffected = l.FilesAffected != null
+                ? JsonSerializer.Deserialize<List<string>>(l.FilesAffected)
+                : null,
+            CreatedAt = l.CreatedAt
+        }).ToList();
+
+        return Ok(logs);
+    }
+
+    /// <summary>
+    /// Adds a log entry to a task (for agents to report activity).
+    /// </summary>
+    [HttpPost("{id}/logs")]
+    [ProducesResponseType(typeof(TaskLogResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<TaskLogResponse>> AddTaskLog(
+        Guid id,
+        [FromBody] CreateTaskLogRequest request)
+    {
+        var task = await _context.Tasks.FindAsync(id);
+        if (task == null)
+        {
+            return NotFound("Task not found.");
+        }
+
+        // Parse type
+        if (!Enum.TryParse<TaskLogType>(request.Type, true, out var logType))
+        {
+            return BadRequest($"Invalid log type: {request.Type}");
+        }
+
+        // Parse level
+        if (!Enum.TryParse<TaskLogLevel>(request.Level, true, out var logLevel))
+        {
+            logLevel = TaskLogLevel.Info;
+        }
+
+        var log = new TaskLog
+        {
+            TaskId = id,
+            Type = logType,
+            Level = logLevel,
+            Message = request.Message,
+            Details = request.Details,
+            Source = request.Source,
+            GitCommit = request.GitCommit,
+            GitBranch = request.GitBranch ?? task.GitBranch,
+            FilesAffected = request.FilesAffected != null
+                ? JsonSerializer.Serialize(request.FilesAffected)
+                : null,
+            Metadata = request.Metadata != null
+                ? JsonSerializer.Serialize(request.Metadata)
+                : null
+        };
+
+        _context.TaskLogs.Add(log);
+        await _context.SaveChangesAsync();
+
+        _logger.LogDebug("Added log entry {LogType} for task {TaskId}: {Message}",
+            logType, id, request.Message);
+
+        var response = new TaskLogResponse
+        {
+            Id = log.Id,
+            TaskId = log.TaskId,
+            Type = log.Type.ToString(),
+            Level = log.Level.ToString(),
+            Message = log.Message,
+            Details = log.Details,
+            Source = log.Source,
+            GitCommit = log.GitCommit,
+            GitBranch = log.GitBranch,
+            FilesAffected = request.FilesAffected,
+            CreatedAt = log.CreatedAt
+        };
+
+        return CreatedAtAction(nameof(GetTaskLogs), new { id = log.TaskId }, response);
+    }
+
+    /// <summary>
+    /// Gets a task with full activity history and git diff summary.
+    /// </summary>
+    [HttpGet("{id}/history")]
+    [ProducesResponseType(typeof(TaskWithLogsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<TaskWithLogsResponse>> GetTaskHistory(Guid id)
+    {
+        var task = await _context.Tasks
+            .Include(t => t.Project)
+            .Include(t => t.Logs)
+            .FirstOrDefaultAsync(t => t.Id == id);
+
+        if (task == null)
+        {
+            return NotFound("Task not found.");
+        }
+
+        var logs = task.Logs
+            .OrderByDescending(l => l.CreatedAt)
+            .Select(l => new TaskLogResponse
+            {
+                Id = l.Id,
+                TaskId = l.TaskId,
+                Type = l.Type.ToString(),
+                Level = l.Level.ToString(),
+                Message = l.Message,
+                Details = l.Details,
+                Source = l.Source,
+                GitCommit = l.GitCommit,
+                GitBranch = l.GitBranch,
+                FilesAffected = l.FilesAffected != null
+                    ? JsonSerializer.Deserialize<List<string>>(l.FilesAffected)
+                    : null,
+                CreatedAt = l.CreatedAt
+            })
+            .ToList();
+
+        // Build git diff summary from logs
+        var gitDiffSummary = BuildGitDiffSummary(task, task.Logs.ToList());
+
+        var response = new TaskWithLogsResponse
+        {
+            Task = new TaskResponse
+            {
+                Id = task.Id,
+                ProjectId = task.ProjectId,
+                Number = task.Number,
+                Title = task.Title,
+                Description = task.Description,
+                Type = task.Type,
+                Status = task.Status,
+                SprintId = task.SprintId,
+                StoryPoints = task.StoryPoints,
+                AssigneeType = task.AssigneeType,
+                AssigneeId = task.AssigneeId,
+                GitBranch = task.GitBranch,
+                GitPrUrl = task.GitPrUrl,
+                CreatedAt = task.CreatedAt,
+                StartedAt = task.StartedAt,
+                CompletedAt = task.CompletedAt
+            },
+            Logs = logs,
+            DiffSummary = gitDiffSummary
+        };
+
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Build a git diff summary from task logs.
+    /// </summary>
+    private static GitDiffSummary? BuildGitDiffSummary(TaskEntity task, List<TaskLog> logs)
+    {
+        if (string.IsNullOrEmpty(task.GitBranch))
+        {
+            return null;
+        }
+
+        var commits = logs.Where(l => l.Type == TaskLogType.Commit).ToList();
+        var filesCreated = new HashSet<string>();
+        var filesModified = new HashSet<string>();
+        var filesDeleted = new HashSet<string>();
+
+        foreach (var log in logs)
+        {
+            if (log.FilesAffected == null) continue;
+
+            try
+            {
+                var files = JsonSerializer.Deserialize<List<string>>(log.FilesAffected);
+                if (files == null) continue;
+
+                switch (log.Type)
+                {
+                    case TaskLogType.FilesCreated:
+                        foreach (var f in files) filesCreated.Add(f);
+                        break;
+                    case TaskLogType.FilesModified:
+                        foreach (var f in files) filesModified.Add(f);
+                        break;
+                    case TaskLogType.FilesDeleted:
+                        foreach (var f in files) filesDeleted.Add(f);
+                        break;
+                }
+            }
+            catch
+            {
+                // Ignore JSON parsing errors
+            }
+        }
+
+        var latestCommit = commits.FirstOrDefault();
+
+        return new GitDiffSummary
+        {
+            Branch = task.GitBranch,
+            CommitCount = commits.Count,
+            FilesAdded = filesCreated.ToList(),
+            FilesModified = filesModified.ToList(),
+            FilesDeleted = filesDeleted.ToList(),
+            LatestCommit = latestCommit?.GitCommit,
+            LatestCommitMessage = latestCommit?.Message
+        };
     }
 }

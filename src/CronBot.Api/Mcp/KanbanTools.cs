@@ -542,6 +542,174 @@ public static class KanbanTools
     }
 
     // ========================================
+    // TASK LOGGING TOOLS
+    // ========================================
+
+    [McpServerTool, Description("Log activity for a task. Use this to record commits, file changes, and other work done on a task.")]
+    public static async Task<string> LogTaskActivity(
+        AppDbContext db,
+        [Description("The task ID")] Guid taskId,
+        [Description("Activity type: StatusChange, BranchCreated, Commit, Push, PullRequestCreated, PullRequestMerged, FilesCreated, FilesModified, FilesDeleted, AgentMessage, AgentError, Command, CommandOutput")] string type,
+        [Description("Activity message")] string message,
+        [Description("Optional detailed content (can include diff, command output, etc.)")] string? details = null,
+        [Description("Optional log level: debug, info, warning, error")] string level = "info",
+        [Description("Optional source (e.g., agent ID)")] string? source = null,
+        [Description("Optional git commit hash")] string? gitCommit = null,
+        [Description("Optional git branch name")] string? gitBranch = null,
+        [Description("Optional JSON array of affected files")] string? filesAffected = null)
+    {
+        var task = await db.Tasks.FindAsync(taskId);
+        if (task == null)
+        {
+            return JsonSerializer.Serialize(new { error = "Task not found" }, JsonOptions);
+        }
+
+        if (!Enum.TryParse<TaskLogType>(type, true, out var logType))
+        {
+            return JsonSerializer.Serialize(new { error = $"Invalid log type: {type}. Valid types: StatusChange, BranchCreated, Commit, Push, PullRequestCreated, PullRequestMerged, FilesCreated, FilesModified, FilesDeleted, AgentMessage, AgentError, Command, CommandOutput" }, JsonOptions);
+        }
+
+        if (!Enum.TryParse<TaskLogLevel>(level, true, out var logLevel))
+        {
+            logLevel = TaskLogLevel.Info;
+        }
+
+        var log = new TaskLog
+        {
+            TaskId = taskId,
+            Type = logType,
+            Level = logLevel,
+            Message = message,
+            Details = details,
+            Source = source,
+            GitCommit = gitCommit,
+            GitBranch = gitBranch ?? task.GitBranch,
+            FilesAffected = filesAffected
+        };
+
+        db.TaskLogs.Add(log);
+        await db.SaveChangesAsync();
+
+        return JsonSerializer.Serialize(new
+        {
+            success = true,
+            log.Id,
+            log.TaskId,
+            Type = log.Type.ToString(),
+            Level = log.Level.ToString(),
+            log.Message,
+            log.GitCommit,
+            log.GitBranch,
+            log.CreatedAt,
+            message = $"Activity logged: {type}"
+        }, JsonOptions);
+    }
+
+    [McpServerTool, Description("Get activity history for a task, including commits, file changes, and agent messages.")]
+    public static async Task<string> GetTaskHistory(
+        AppDbContext db,
+        [Description("The task ID")] Guid taskId,
+        [Description("Optional filter by log type")] string? type = null,
+        [Description("Number of logs to skip")] int skip = 0,
+        [Description("Number of logs to return (max 100)")] int take = 50)
+    {
+        var task = await db.Tasks.FindAsync(taskId);
+        if (task == null)
+        {
+            return JsonSerializer.Serialize(new { error = "Task not found" }, JsonOptions);
+        }
+
+        var query = db.TaskLogs.Where(l => l.TaskId == taskId);
+
+        if (!string.IsNullOrEmpty(type) && Enum.TryParse<TaskLogType>(type, true, out var logType))
+        {
+            query = query.Where(l => l.Type == logType);
+        }
+
+        var logs = await query
+            .OrderByDescending(l => l.CreatedAt)
+            .Skip(skip)
+            .Take(Math.Min(take, 100))
+            .Select(l => new
+            {
+                l.Id,
+                l.TaskId,
+                Type = l.Type.ToString(),
+                Level = l.Level.ToString(),
+                l.Message,
+                l.Details,
+                l.Source,
+                l.GitCommit,
+                l.GitBranch,
+                l.FilesAffected,
+                l.CreatedAt
+            })
+            .ToListAsync();
+
+        // Build git diff summary
+        var commitCount = logs.Count(l => l.Type == nameof(TaskLogType.Commit));
+        var latestCommit = logs.FirstOrDefault(l => l.Type == nameof(TaskLogType.Commit));
+
+        var summary = new
+        {
+            TaskId = taskId,
+            TaskNumber = task.Number,
+            TaskTitle = task.Title,
+            TaskStatus = task.Status.ToString(),
+            GitBranch = task.GitBranch,
+            GitPrUrl = task.GitPrUrl,
+            CommitCount = commitCount,
+            LatestCommit = latestCommit != null ? new
+            {
+                latestCommit.GitCommit,
+                latestCommit.Message
+            } : null,
+            Logs = logs
+        };
+
+        return JsonSerializer.Serialize(summary, JsonOptions);
+    }
+
+    [McpServerTool, Description("Update the git branch name for a task. Call this when creating a new branch.")]
+    public static async Task<string> SetTaskBranch(
+        AppDbContext db,
+        [Description("The task ID")] Guid taskId,
+        [Description("The git branch name")] string branch)
+    {
+        var task = await db.Tasks.FindAsync(taskId);
+        if (task == null)
+        {
+            return JsonSerializer.Serialize(new { error = "Task not found" }, JsonOptions);
+        }
+
+        var oldBranch = task.GitBranch;
+        task.GitBranch = branch;
+
+        // Log the branch creation
+        var log = new TaskLog
+        {
+            TaskId = taskId,
+            Type = TaskLogType.BranchCreated,
+            Level = TaskLogLevel.Info,
+            Message = $"Created branch: {branch}",
+            GitBranch = branch
+        };
+
+        db.TaskLogs.Add(log);
+        await db.SaveChangesAsync();
+
+        return JsonSerializer.Serialize(new
+        {
+            success = true,
+            task.Id,
+            task.Number,
+            OldBranch = oldBranch,
+            NewBranch = branch,
+            message = $"Branch set to: {branch}"
+        }, JsonOptions);
+    }
+
+    // ========================================
     // HELPER
     // ========================================
 

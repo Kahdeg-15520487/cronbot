@@ -218,3 +218,255 @@ public record TaskCommentResponse
     /// </summary>
     public DateTimeOffset CreatedAt { get; init; }
 }
+
+/// <summary>
+/// Request to create a pull request for a task.
+/// </summary>
+public record CreatePullRequestRequest
+{
+    /// <summary>
+    /// PR title (defaults to "Task #N: Title").
+    /// </summary>
+    public string? Title { get; init; }
+
+    /// <summary>
+    /// PR body/description (defaults to task description).
+    /// </summary>
+    public string? Body { get; init; }
+
+    /// <summary>
+    /// Base branch to merge into (defaults to "main").
+    /// </summary>
+    public string? BaseBranch { get; init; }
+}
+
+/// <summary>
+/// Request to merge a pull request.
+/// </summary>
+public record MergePullRequestRequest
+{
+    /// <summary>
+    /// Custom merge message (optional).
+    /// </summary>
+    public string? MergeMessage { get; init; }
+}
+
+/// <summary>
+/// Response for pull request operations.
+/// </summary>
+public record PullRequestResponse
+{
+    /// <summary>
+    /// Task ID.
+    /// </summary>
+    public Guid TaskId { get; init; }
+
+    /// <summary>
+    /// PR number in Gitea.
+    /// </summary>
+    public int PrNumber { get; init; }
+
+    /// <summary>
+    /// PR URL in Gitea.
+    /// </summary>
+    public string? PrUrl { get; init; }
+
+    /// <summary>
+    /// Branch name.
+    /// </summary>
+    public string? Branch { get; init; }
+
+    /// <summary>
+    /// PR status (open, closed, merged, none, unknown).
+    /// </summary>
+    public required string Status { get; init; }
+
+    /// <summary>
+    /// Whether the PR has been merged.
+    /// </summary>
+    public bool? Merged { get; init; }
+
+    /// <summary>
+    /// Whether the PR can be merged (no conflicts).
+    /// </summary>
+    public bool? Mergeable { get; init; }
+
+    /// <summary>
+    /// Status message.
+    /// </summary>
+    public string? Message { get; init; }
+}
+
+/// <summary>
+/// Request to create a task log entry.
+/// </summary>
+public record CreateTaskLogRequest
+{
+    /// <summary>
+    /// Type of log entry.
+    /// </summary>
+    public required string Type { get; init; }
+
+    /// <summary>
+    /// Log level (debug, info, warning, error).
+    /// </summary>
+    public string Level { get; init; } = "info";
+
+    /// <summary>
+    /// Brief message.
+    /// </summary>
+    public required string Message { get; init; }
+
+    /// <summary>
+    /// Detailed content.
+    /// </summary>
+    public string? Details { get; init; }
+
+    /// <summary>
+    /// Source (agent ID, user ID, etc).
+    /// </summary>
+    public string? Source { get; init; }
+
+    /// <summary>
+    /// Git commit hash.
+    /// </summary>
+    public string? GitCommit { get; init; }
+
+    /// <summary>
+    /// Git branch name.
+    /// </summary>
+    public string? GitBranch { get; init; }
+
+    /// <summary>
+    /// Files affected.
+    /// </summary>
+    public List<string>? FilesAffected { get; init; }
+
+    /// <summary>
+    /// Additional metadata.
+    /// </summary>
+    public Dictionary<string, object>? Metadata { get; init; }
+}
+
+/// <summary>
+/// Response for task log entry.
+/// </summary>
+public record TaskLogResponse
+{
+    /// <summary>
+    /// Log entry ID.
+    /// </summary>
+    public Guid Id { get; init; }
+
+    /// <summary>
+    /// Task ID.
+    /// </summary>
+    public Guid TaskId { get; init; }
+
+    /// <summary>
+    /// Type of log entry.
+    /// </summary>
+    public required string Type { get; init; }
+
+    /// <summary>
+    /// Log level.
+    /// </summary>
+    public required string Level { get; init; }
+
+    /// <summary>
+    /// Brief message.
+    /// </summary>
+    public required string Message { get; init; }
+
+    /// <summary>
+    /// Detailed content (may contain diff, commit details, etc).
+    /// </summary>
+    public string? Details { get; init; }
+
+    /// <summary>
+    /// Source of the log entry.
+    /// </summary>
+    public string? Source { get; init; }
+
+    /// <summary>
+    /// Git commit hash.
+    /// </summary>
+    public string? GitCommit { get; init; }
+
+    /// <summary>
+    /// Git branch name.
+    /// </summary>
+    public string? GitBranch { get; init; }
+
+    /// <summary>
+    /// Files affected.
+    /// </summary>
+    public List<string>? FilesAffected { get; init; }
+
+    /// <summary>
+    /// When the log entry was created.
+    /// </summary>
+    public DateTimeOffset CreatedAt { get; init; }
+}
+
+/// <summary>
+/// Response for task with full activity history.
+/// </summary>
+public record TaskWithLogsResponse
+{
+    /// <summary>
+    /// Basic task info.
+    /// </summary>
+    public required TaskResponse Task { get; init; }
+
+    /// <summary>
+    /// Activity logs.
+    /// </summary>
+    public required List<TaskLogResponse> Logs { get; init; }
+
+    /// <summary>
+    /// Git diff summary (latest state).
+    /// </summary>
+    public GitDiffSummary? DiffSummary { get; init; }
+}
+
+/// <summary>
+/// Summary of git changes for a task.
+/// </summary>
+public record GitDiffSummary
+{
+    /// <summary>
+    /// Branch name.
+    /// </summary>
+    public string? Branch { get; init; }
+
+    /// <summary>
+    /// Number of commits.
+    /// </summary>
+    public int CommitCount { get; init; }
+
+    /// <summary>
+    /// Files added.
+    /// </summary>
+    public List<string> FilesAdded { get; init; } = [];
+
+    /// <summary>
+    /// Files modified.
+    /// </summary>
+    public List<string> FilesModified { get; init; } = [];
+
+    /// <summary>
+    /// Files deleted.
+    /// </summary>
+    public List<string> FilesDeleted { get; init; } = [];
+
+    /// <summary>
+    /// Latest commit hash.
+    /// </summary>
+    public string? LatestCommit { get; init; }
+
+    /// <summary>
+    /// Latest commit message.
+    /// </summary>
+    public string? LatestCommitMessage { get; init; }
+}

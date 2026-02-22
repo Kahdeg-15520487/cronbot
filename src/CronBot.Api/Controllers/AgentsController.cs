@@ -330,9 +330,16 @@ public class AgentsController : ControllerBase
             return NotFound();
         }
 
-        // For now, return status message as logs
-        // TODO: Implement actual container log retrieval via Docker API
-        return Ok(agent.StatusMessage ?? "No logs available.");
+        try
+        {
+            var logs = await _orchestrator.GetAgentLogsAsync(id, tail);
+            return Ok(logs ?? "No logs available (container may have been removed).");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get logs for agent {AgentId}", id);
+            return Ok($"Error retrieving logs: {ex.Message}");
+        }
     }
 }
 

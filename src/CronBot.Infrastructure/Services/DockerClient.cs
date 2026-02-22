@@ -38,6 +38,11 @@ public class DockerClientService : IDisposable
         string? model,
         int? maxTokens,
         string kanbanUrl,
+        string? giteaUrl = null,
+        string? giteaUsername = null,
+        string? giteaPassword = null,
+        string? giteaToken = null,
+        string? repoUrl = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -69,7 +74,13 @@ public class DockerClientService : IDisposable
                 "STATE_PATH=/agent-state",
                 "TASK_POLL_INTERVAL_MS=30000",
                 "RETRY_DELAY_MS=10000",
-                "BLOCKER_WAIT_MS=30000"
+                "BLOCKER_WAIT_MS=30000",
+                // Git/Gitea configuration for branching workflow
+                $"GITEA_URL={giteaUrl ?? ""}",
+                $"GITEA_USERNAME={giteaUsername ?? ""}",
+                $"GITEA_PASSWORD={giteaPassword ?? ""}",
+                $"GITEA_TOKEN={giteaToken ?? ""}",
+                $"REPO_URL={repoUrl ?? ""}"
             };
 
             var labels = new Dictionary<string, string>
@@ -518,6 +529,11 @@ public class DockerClientService : IDisposable
             _logger.LogError(ex, "Failed to ensure network {NetworkName} exists", networkName);
         }
     }
+
+    /// <summary>
+    /// Get the underlying Docker client for advanced operations.
+    /// </summary>
+    public Docker.DotNet.DockerClient GetClient() => _client;
 
     public void Dispose()
     {

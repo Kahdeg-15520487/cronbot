@@ -2,6 +2,7 @@ using CronBot.Application.DTOs;
 using CronBot.Domain.Entities;
 using CronBot.Domain.Enums;
 using CronBot.Infrastructure.Data;
+using CronBot.Infrastructure.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TaskEntity = CronBot.Domain.Entities.Task;
@@ -17,10 +18,17 @@ namespace CronBot.Api.Controllers;
 public class ProjectsController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly GitService _gitService;
+    private readonly ILogger<ProjectsController> _logger;
 
-    public ProjectsController(AppDbContext context)
+    public ProjectsController(
+        AppDbContext context,
+        GitService gitService,
+        ILogger<ProjectsController> logger)
     {
         _context = context;
+        _gitService = gitService;
+        _logger = logger;
     }
 
     /// <summary>
@@ -141,6 +149,43 @@ public class ProjectsController : ControllerBase
         _context.Boards.Add(board);
 
         await _context.SaveChangesAsync();
+
+        // Create Gitea repository for Internal GitMode
+        if (project.GitMode == GitMode.Internal)
+        {
+            try
+            {
+                var repoName = $"{project.Slug}-{project.Id.ToString()[..8]}";
+                var giteaRepo = await _gitService.CreateRepoAsync(
+                    repoName,
+                    project.Description ?? $"CronBot project: {project.Name}");
+
+                if (giteaRepo != null)
+                {
+                    project.InternalRepoId = (int)giteaRepo.Id;
+                    project.InternalRepoUrl = _gitService.GetWebUrl(giteaRepo.Owner?.Login ?? "cronbot", giteaRepo.Name);
+                    await _context.SaveChangesAsync();
+
+                    _logger.LogInformation(
+                        "Created Gitea repo {RepoName} for project {ProjectId}",
+                        repoName, project.Id);
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "Failed to create Gitea repo for project {ProjectId}, continuing without repo",
+                        project.Id);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Error creating Gitea repo for project {ProjectId}",
+                    project.Id);
+                // Continue without Gitea repo - project is still created
+            }
+        }
 
         var response = new ProjectResponse
         {

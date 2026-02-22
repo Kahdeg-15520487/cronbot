@@ -120,4 +120,5 @@ public class Task : AuditableEntity
     public Task? ParentTask { get; set; }
     public ICollection<Task> SubTasks { get; set; } = [];
     public ICollection<TaskComment> Comments { get; set; } = [];
+    public ICollection<TaskLog> Logs { get; set; } = [];
 }

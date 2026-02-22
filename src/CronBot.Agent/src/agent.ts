@@ -159,6 +159,9 @@ export class Agent {
       ? `for project ${projectId}`
       : "from any project";
 
+    // Build git config section
+    const gitConfig = this.buildGitConfigSection();
+
     return `You are CronBot Agent, an autonomous AI development assistant.
 
 Your task is to check for available work and execute it using the Kanban tools available via MCP.
@@ -172,8 +175,13 @@ Your task is to check for available work and execute it using the Kanban tools a
 3. **If task found**:
    - Move the task to "InProgress" status using \`move_task\`
    - Read and understand the task description
+${gitConfig}
    - Execute the work requested in the task
-   - When complete, move the task to "Done" status
+   - When complete:
+     - Commit your changes with a descriptive message
+     - Push the branch to remote
+     - Update the task with the branch name and any PR URL
+     - Move the task to "Done" status
    - If blocked, move to "Blocked" status and add a comment explaining why
 
 4. **Important**:
@@ -189,6 +197,39 @@ Your task is to check for available work and execute it using the Kanban tools a
 - Workspace: ${this.config.workspacePath}
 
 Start by checking for the next available task.`;
+  }
+
+  /**
+   * Build git configuration instructions
+   */
+  private buildGitConfigSection(): string {
+    const hasGitConfig = this.config.giteaUrl || this.config.repoUrl;
+
+    if (!hasGitConfig) {
+      return `   - Work on the files in the workspace`;
+    }
+
+    const repoUrl = this.config.repoUrl
+      ? this.config.repoUrl
+      : this.config.giteaUsername && this.config.giteaPassword && this.config.giteaUrl
+        ? `${this.config.giteaUrl.replace("://", `://${this.config.giteaUsername}:${this.config.giteaPassword}@`)}/PROJECT_SLUG.git`
+        : null;
+
+    if (!repoUrl) {
+      return `   - Work on the files in the workspace`;
+    }
+
+    return `   - **Git Workflow (MANDATORY)**:
+     a. Initialize git if not already done: \`git init\`
+     b. Configure git identity: \`git config user.email "agent@cronbot.local"\` and \`git config user.name "CronBot Agent"\`
+     c. Clone the repository if needed (or ensure you're in the repo directory)
+     d. Fetch latest: \`git fetch origin\`
+     e. Create a feature branch for this task: \`git checkout -b task/TASK-NUMBER-TASK-SLUG\`
+        - Branch naming: use task number from the task data (e.g., task/42-add-login-button)
+        - If task type is "bug", use "fix/" prefix instead (e.g., fix/42-fix-login-crash)
+     f. Make sure you're on the new branch before making changes: \`git branch\`
+     g. Stage changes as you work: \`git add .\`
+     h. Commit frequently with meaningful messages: \`git commit -m "descriptive message"\``;
   }
 
   /**

@@ -29,6 +29,13 @@ public static class DependencyInjection
         // Register Orchestrator service
         services.AddScoped<OrchestratorService>();
 
+        // Register Git service for Gitea integration
+        services.AddHttpClient("Gitea");
+        services.AddScoped<GitService>();
+
+        // Register Preview service
+        services.AddScoped<PreviewService>();
+
         return services;
     }
 }
