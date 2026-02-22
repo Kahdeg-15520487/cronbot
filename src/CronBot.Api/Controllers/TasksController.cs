@@ -930,4 +930,232 @@ public class TasksController : ControllerBase
             LatestCommitMessage = latestCommit?.Message
         };
     }
+
+    /// <summary>
+    /// Gets the git diff for a task.
+    /// </summary>
+    [HttpGet("{id}/diff")]
+    [ProducesResponseType(typeof(TaskDiffResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<TaskDiffResponse>> GetTaskDiff(Guid id)
+    {
+        var task = await _context.Tasks
+            .Include(t => t.Project)
+            .FirstOrDefaultAsync(t => t.Id == id);
+
+        if (task == null)
+        {
+            return NotFound("Task not found.");
+        }
+
+        if (string.IsNullOrEmpty(task.GitBranch))
+        {
+            return NotFound("Task has no associated branch.");
+        }
+
+        if (task.Project?.InternalRepoUrl == null)
+        {
+            return NotFound("Project has no internal repository.");
+        }
+
+        // Extract owner and repo name from URL
+        // URL format: http://gitea:3000/owner/repo-name
+        var repoUrl = task.Project.InternalRepoUrl;
+        var uri = new Uri(repoUrl);
+        var pathParts = uri.AbsolutePath.Trim('/').Split('/');
+        if (pathParts.Length < 2)
+        {
+            return NotFound("Invalid repository URL.");
+        }
+
+        var owner = pathParts[0];
+        var repoName = pathParts[1];
+
+        // Get the diff
+        string? diff;
+        if (task.GitPrId.HasValue)
+        {
+            // Get diff from PR
+            diff = await _gitService.GetPullRequestDiffAsync(owner, repoName, task.GitPrId.Value);
+        }
+        else
+        {
+            // Get diff between branch and main
+            diff = await _gitService.GetBranchDiffAsync(owner, repoName, task.GitBranch, "main");
+        }
+
+        // Get changed files
+        List<ChangedFileResponse> changedFiles = new();
+        if (task.GitPrId.HasValue)
+        {
+            var files = await _gitService.GetPullRequestFilesAsync(owner, repoName, task.GitPrId.Value);
+            changedFiles = files.Select(f => new ChangedFileResponse
+            {
+                Filename = f.Filename,
+                Status = f.Status,
+                Additions = f.Additions,
+                Deletions = f.Deletions,
+                Changes = f.Changes,
+                Patch = f.Patch
+            }).ToList();
+        }
+
+        // Get commits
+        List<CommitResponse> commits = new();
+        if (task.GitPrId.HasValue)
+        {
+            var prCommits = await _gitService.GetPullRequestCommitsAsync(owner, repoName, task.GitPrId.Value);
+            commits = prCommits.Select(c => new CommitResponse
+            {
+                Sha = c.Sha,
+                Message = c.Message,
+                Author = c.Author?.Name ?? "Unknown",
+                CreatedAt = c.Created
+            }).ToList();
+        }
+
+        return Ok(new TaskDiffResponse
+        {
+            TaskId = task.Id,
+            Branch = task.GitBranch,
+            BaseBranch = "main",
+            Diff = diff,
+            Files = changedFiles,
+            Commits = commits
+        });
+    }
+
+    /// <summary>
+    /// Creates a review (approve/request changes/comment) on a task's PR.
+    /// </summary>
+    [HttpPost("{id}/reviews")]
+    [ProducesResponseType(typeof(ReviewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ReviewResponse>> CreateReview(Guid id, [FromBody] CreateReviewRequest request)
+    {
+        var task = await _context.Tasks
+            .Include(t => t.Project)
+            .FirstOrDefaultAsync(t => t.Id == id);
+
+        if (task == null)
+        {
+            return NotFound("Task not found.");
+        }
+
+        if (!task.GitPrId.HasValue)
+        {
+            return NotFound("Task has no pull request.");
+        }
+
+        if (task.Project?.InternalRepoUrl == null)
+        {
+            return NotFound("Project has no internal repository.");
+        }
+
+        // Extract owner and repo name from URL
+        var repoUrl = task.Project.InternalRepoUrl;
+        var uri = new Uri(repoUrl);
+        var pathParts = uri.AbsolutePath.Trim('/').Split('/');
+        if (pathParts.Length < 2)
+        {
+            return NotFound("Invalid repository URL.");
+        }
+
+        var owner = pathParts[0];
+        var repoName = pathParts[1];
+
+        // Validate review type
+        var reviewType = request.ReviewType?.ToLower() ?? "comment";
+        if (!new[] { "approved", "rejected", "comment" }.Contains(reviewType))
+        {
+            return BadRequest("Invalid review type. Must be 'approved', 'rejected', or 'comment'.");
+        }
+
+        var review = await _gitService.CreateReviewAsync(
+            owner,
+            repoName,
+            task.GitPrId.Value,
+            request.Body ?? "",
+            reviewType);
+
+        if (review == null)
+        {
+            return StatusCode(500, "Failed to create review.");
+        }
+
+        // Log the review
+        var log = new TaskLog
+        {
+            TaskId = task.Id,
+            Type = reviewType == "approved" ? TaskLogType.PullRequestMerged :
+                   reviewType == "rejected" ? TaskLogType.AgentError :
+                   TaskLogType.AgentMessage,
+            Level = TaskLogLevel.Info,
+            Message = reviewType == "approved" ? $"PR approved: {request.Body}" :
+                      reviewType == "rejected" ? $"Changes requested: {request.Body}" :
+                      $"Review comment: {request.Body}",
+            Source = "user"
+        };
+        _context.TaskLogs.Add(log);
+        await _context.SaveChangesAsync();
+
+        return Ok(new ReviewResponse
+        {
+            Id = review.Id,
+            Body = review.Body,
+            State = review.State,
+            CreatedAt = review.CreatedAt
+        });
+    }
+
+    /// <summary>
+    /// Gets reviews for a task's PR.
+    /// </summary>
+    [HttpGet("{id}/reviews")]
+    [ProducesResponseType(typeof(IEnumerable<ReviewResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IEnumerable<ReviewResponse>>> GetReviews(Guid id)
+    {
+        var task = await _context.Tasks
+            .Include(t => t.Project)
+            .FirstOrDefaultAsync(t => t.Id == id);
+
+        if (task == null)
+        {
+            return NotFound("Task not found.");
+        }
+
+        if (!task.GitPrId.HasValue)
+        {
+            return Ok(new List<ReviewResponse>());
+        }
+
+        if (task.Project?.InternalRepoUrl == null)
+        {
+            return Ok(new List<ReviewResponse>());
+        }
+
+        // Extract owner and repo name from URL
+        var repoUrl = task.Project.InternalRepoUrl;
+        var uri = new Uri(repoUrl);
+        var pathParts = uri.AbsolutePath.Trim('/').Split('/');
+        if (pathParts.Length < 2)
+        {
+            return Ok(new List<ReviewResponse>());
+        }
+
+        var owner = pathParts[0];
+        var repoName = pathParts[1];
+
+        var reviews = await _gitService.GetReviewsAsync(owner, repoName, task.GitPrId.Value);
+
+        return Ok(reviews.Select(r => new ReviewResponse
+        {
+            Id = r.Id,
+            Body = r.Body,
+            State = r.State,
+            Author = r.User?.Login,
+            CreatedAt = r.CreatedAt
+        }));
+    }
 }

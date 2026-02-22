@@ -203,6 +203,44 @@ export interface PullRequestResponse {
   message?: string;
 }
 
+export interface TaskDiffResponse {
+  taskId: string;
+  branch?: string;
+  baseBranch?: string;
+  diff?: string;
+  files: ChangedFileResponse[];
+  commits: CommitResponse[];
+}
+
+export interface ChangedFileResponse {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  changes: number;
+  patch?: string;
+}
+
+export interface CommitResponse {
+  sha: string;
+  message: string;
+  author: string;
+  createdAt: string;
+}
+
+export interface CreateReviewRequest {
+  body?: string;
+  reviewType?: 'approved' | 'rejected' | 'comment';
+}
+
+export interface ReviewResponse {
+  id: number;
+  body?: string;
+  state: string;
+  author?: string;
+  createdAt: string;
+}
+
 // Raw API response types (with number enums)
 interface RawTask {
   id: string;
@@ -349,6 +387,12 @@ export const tasksApi = {
     api.post<PullRequestResponse>(`/tasks/${id}/pull-request`, data),
   mergePullRequest: (id: string, data?: { mergeMessage?: string }) =>
     api.post<PullRequestResponse>(`/tasks/${id}/pull-request/merge`, data),
+  // Diff
+  getDiff: (id: string) => api.get<TaskDiffResponse>(`/tasks/${id}/diff`),
+  // Reviews
+  getReviews: (id: string) => api.get<ReviewResponse[]>(`/tasks/${id}/reviews`),
+  createReview: (id: string, data: CreateReviewRequest) =>
+    api.post<ReviewResponse>(`/tasks/${id}/reviews`, data),
 };
 
 export const agentsApi = {

@@ -470,3 +470,148 @@ public record GitDiffSummary
     /// </summary>
     public string? LatestCommitMessage { get; init; }
 }
+
+/// <summary>
+/// Response for task diff.
+/// </summary>
+public record TaskDiffResponse
+{
+    /// <summary>
+    /// Task ID.
+    /// </summary>
+    public Guid TaskId { get; init; }
+
+    /// <summary>
+    /// Branch name.
+    /// </summary>
+    public string? Branch { get; init; }
+
+    /// <summary>
+    /// Base branch name.
+    /// </summary>
+    public string? BaseBranch { get; init; }
+
+    /// <summary>
+    /// Unified diff content.
+    /// </summary>
+    public string? Diff { get; init; }
+
+    /// <summary>
+    /// Changed files with patches.
+    /// </summary>
+    public List<ChangedFileResponse> Files { get; init; } = [];
+
+    /// <summary>
+    /// Commits in the branch/PR.
+    /// </summary>
+    public List<CommitResponse> Commits { get; init; } = [];
+}
+
+/// <summary>
+/// Response for a changed file.
+/// </summary>
+public record ChangedFileResponse
+{
+    /// <summary>
+    /// File path.
+    /// </summary>
+    public string Filename { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Status: added, modified, deleted, renamed.
+    /// </summary>
+    public string Status { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Number of additions.
+    /// </summary>
+    public int Additions { get; init; }
+
+    /// <summary>
+    /// Number of deletions.
+    /// </summary>
+    public int Deletions { get; init; }
+
+    /// <summary>
+    /// Total changes.
+    /// </summary>
+    public int Changes { get; init; }
+
+    /// <summary>
+    /// Patch content (hunks).
+    /// </summary>
+    public string? Patch { get; init; }
+}
+
+/// <summary>
+/// Response for a commit.
+/// </summary>
+public record CommitResponse
+{
+    /// <summary>
+    /// Commit SHA.
+    /// </summary>
+    public string Sha { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Commit message.
+    /// </summary>
+    public string Message { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Author name.
+    /// </summary>
+    public string Author { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Created at.
+    /// </summary>
+    public DateTimeOffset CreatedAt { get; init; }
+}
+
+/// <summary>
+/// Request to create a review.
+/// </summary>
+public record CreateReviewRequest
+{
+    /// <summary>
+    /// Review body/comment.
+    /// </summary>
+    public string? Body { get; init; }
+
+    /// <summary>
+    /// Review type: approved, rejected, comment.
+    /// </summary>
+    public string? ReviewType { get; init; }
+}
+
+/// <summary>
+/// Response for a review.
+/// </summary>
+public record ReviewResponse
+{
+    /// <summary>
+    /// Review ID.
+    /// </summary>
+    public long Id { get; init; }
+
+    /// <summary>
+    /// Review body.
+    /// </summary>
+    public string? Body { get; init; }
+
+    /// <summary>
+    /// Review state.
+    /// </summary>
+    public string State { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Author login.
+    /// </summary>
+    public string? Author { get; init; }
+
+    /// <summary>
+    /// Created at.
+    /// </summary>
+    public DateTimeOffset CreatedAt { get; init; }
+}

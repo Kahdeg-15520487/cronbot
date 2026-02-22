@@ -417,6 +417,212 @@ public class GitService
     {
         return $"{_giteaUrl}/{owner}/{repoName}/pulls/{prNumber}";
     }
+
+    /// <summary>
+    /// Get the diff for a pull request.
+    /// </summary>
+    public async Task<string?> GetPullRequestDiffAsync(
+        string owner,
+        string repoName,
+        int prNumber,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync(
+                $"/api/v1/repos/{owner}/{repoName}/pulls/{prNumber}.diff",
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Failed to get diff for PR #{PRNumber} in {Owner}/{RepoName}",
+                    prNumber, owner, repoName);
+                return null;
+            }
+
+            return await response.Content.ReadAsStringAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting diff for PR #{PRNumber} in {Owner}/{RepoName}",
+                prNumber, owner, repoName);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Get the diff between two branches.
+    /// </summary>
+    public async Task<string?> GetBranchDiffAsync(
+        string owner,
+        string repoName,
+        string headBranch,
+        string baseBranch = "main",
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync(
+                $"/api/v1/repos/{owner}/{repoName}/compare/{baseBranch}...{headBranch}.diff",
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Failed to get diff between {Base} and {Head} in {Owner}/{RepoName}",
+                    baseBranch, headBranch, owner, repoName);
+                return null;
+            }
+
+            return await response.Content.ReadAsStringAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting diff between {Base} and {Head} in {Owner}/{RepoName}",
+                baseBranch, headBranch, owner, repoName);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Create a review on a pull request.
+    /// </summary>
+    public async Task<GiteaReview?> CreateReviewAsync(
+        string owner,
+        string repoName,
+        int prNumber,
+        string body,
+        string reviewType = "comment",
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureAuthenticatedAsync(cancellationToken);
+
+        try
+        {
+            var request = new
+            {
+                body,
+                event_type = reviewType // "approved", "rejected", "comment"
+            };
+
+            var response = await _httpClient.PostAsJsonAsync(
+                $"/api/v1/repos/{owner}/{repoName}/pulls/{prNumber}/reviews",
+                request,
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogError(
+                    "Failed to create review on PR #{PRNumber} in {Owner}/{RepoName}: {StatusCode} - {Error}",
+                    prNumber, owner, repoName, response.StatusCode, error);
+                return null;
+            }
+
+            var review = await response.Content.ReadFromJsonAsync<GiteaReview>(cancellationToken);
+            _logger.LogInformation("Created review on PR #{PRNumber} in {Owner}/{RepoName}",
+                prNumber, owner, repoName);
+            return review;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating review on PR #{PRNumber} in {Owner}/{RepoName}",
+                prNumber, owner, repoName);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Get reviews for a pull request.
+    /// </summary>
+    public async Task<List<GiteaReview>> GetReviewsAsync(
+        string owner,
+        string repoName,
+        int prNumber,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync(
+                $"/api/v1/repos/{owner}/{repoName}/pulls/{prNumber}/reviews",
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return new List<GiteaReview>();
+            }
+
+            var reviews = await response.Content.ReadFromJsonAsync<List<GiteaReview>>(cancellationToken);
+            return reviews ?? new List<GiteaReview>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting reviews for PR #{PRNumber} in {Owner}/{RepoName}",
+                prNumber, owner, repoName);
+            return new List<GiteaReview>();
+        }
+    }
+
+    /// <summary>
+    /// Get commits for a pull request.
+    /// </summary>
+    public async Task<List<GiteaCommit>> GetPullRequestCommitsAsync(
+        string owner,
+        string repoName,
+        int prNumber,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync(
+                $"/api/v1/repos/{owner}/{repoName}/pulls/{prNumber}/commits",
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return new List<GiteaCommit>();
+            }
+
+            var commits = await response.Content.ReadFromJsonAsync<List<GiteaCommit>>(cancellationToken);
+            return commits ?? new List<GiteaCommit>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting commits for PR #{PRNumber} in {Owner}/{RepoName}",
+                prNumber, owner, repoName);
+            return new List<GiteaCommit>();
+        }
+    }
+
+    /// <summary>
+    /// Get changed files for a pull request.
+    /// </summary>
+    public async Task<List<GiteaChangedFile>> GetPullRequestFilesAsync(
+        string owner,
+        string repoName,
+        int prNumber,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync(
+                $"/api/v1/repos/{owner}/{repoName}/pulls/{prNumber}/files",
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return new List<GiteaChangedFile>();
+            }
+
+            var files = await response.Content.ReadFromJsonAsync<List<GiteaChangedFile>>(cancellationToken);
+            return files ?? new List<GiteaChangedFile>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting files for PR #{PRNumber} in {Owner}/{RepoName}",
+                prNumber, owner, repoName);
+            return new List<GiteaChangedFile>();
+        }
+    }
 }
 
 /// <summary>
@@ -552,4 +758,85 @@ public class GiteaPRBranch
 
     [JsonPropertyName("repo")]
     public GiteaRepo? Repo { get; set; }
+}
+
+/// <summary>
+/// Gitea review response.
+/// </summary>
+public class GiteaReview
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("user")]
+    public GiteaUser? User { get; set; }
+
+    [JsonPropertyName("body")]
+    public string? Body { get; set; }
+
+    [JsonPropertyName("state")]
+    public string State { get; set; } = string.Empty; // "PENDING", "APPROVED", "CHANGES_REQUESTED", "COMMENTED"
+
+    [JsonPropertyName("created_at")]
+    public DateTimeOffset CreatedAt { get; set; }
+
+    [JsonPropertyName("updated_at")]
+    public DateTimeOffset? UpdatedAt { get; set; }
+}
+
+/// <summary>
+/// Gitea commit response.
+/// </summary>
+public class GiteaCommit
+{
+    [JsonPropertyName("sha")]
+    public string Sha { get; set; } = string.Empty;
+
+    [JsonPropertyName("message")]
+    public string Message { get; set; } = string.Empty;
+
+    [JsonPropertyName("author")]
+    public GiteaCommitUser? Author { get; set; }
+
+    [JsonPropertyName("committer")]
+    public GiteaCommitUser? Committer { get; set; }
+
+    [JsonPropertyName("created")]
+    public DateTimeOffset Created { get; set; }
+}
+
+/// <summary>
+/// Gitea commit user.
+/// </summary>
+public class GiteaCommitUser
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("email")]
+    public string Email { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Gitea changed file.
+/// </summary>
+public class GiteaChangedFile
+{
+    [JsonPropertyName("filename")]
+    public string Filename { get; set; } = string.Empty;
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = string.Empty; // "added", "modified", "deleted", "renamed"
+
+    [JsonPropertyName("additions")]
+    public int Additions { get; set; }
+
+    [JsonPropertyName("deletions")]
+    public int Deletions { get; set; }
+
+    [JsonPropertyName("changes")]
+    public int Changes { get; set; }
+
+    [JsonPropertyName("patch")]
+    public string? Patch { get; set; }
 }
