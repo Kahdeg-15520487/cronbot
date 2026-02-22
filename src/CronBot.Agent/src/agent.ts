@@ -240,6 +240,14 @@ Start by checking for the next available task.`;
     const mcpServers = this.buildMcpServersConfig();
 
     let result = "";
+    const timestamp = new Date().toISOString();
+    console.log(`\n[${timestamp}] === Starting Agent Execution ===`);
+    console.log(`[${timestamp}] Working directory: ${cwd}`);
+    console.log(`[${timestamp}] Allowed tools: ${allowedTools.join(", ")}`);
+    if (mcpServers) {
+      console.log(`[${timestamp}] MCP servers: ${Object.keys(mcpServers).join(", ")}`);
+    }
+    console.log("");
 
     try {
       for await (const message of query({
@@ -255,21 +263,23 @@ Start by checking for the next available task.`;
           // Base URL is read from ANTHROPIC_BASE_URL env var
         },
       })) {
+        this.logAgentMessage(message);
+
         if (message.type === "result") {
           if (message.subtype === "success") {
             result = message.result;
           } else {
-            const timestamp = new Date().toISOString();
+            const ts = new Date().toISOString();
             const errorSubtype = message.subtype;
             const errorDetails = message.errors?.join("; ") ?? "Unknown error";
-            console.error(`[${timestamp}] Agent returned error result:`);
+            console.error(`[${ts}] Agent returned error result:`);
             console.error(`  Subtype: ${errorSubtype}`);
             console.error(`  Errors: ${errorDetails}`);
             this.state.addEntry({
               type: "error",
               message: `Agent error: ${errorSubtype} - ${errorDetails}`,
               metadata: {
-                timestamp,
+                timestamp: ts,
                 subtype: errorSubtype,
                 errors: message.errors,
                 cwd,
@@ -351,6 +361,77 @@ Start by checking for the next available task.`;
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Log agent messages with detailed formatting
+   */
+  private logAgentMessage(message: unknown): void {
+    const timestamp = new Date().toISOString();
+    const msg = message as Record<string, unknown>;
+
+    switch (msg.type) {
+      case "system":
+        console.log(`[${timestamp}] [SYSTEM] ${JSON.stringify(msg.message || msg)}`);
+        break;
+
+      case "assistant":
+        // Agent's text response/thinking
+        if (msg.content && Array.isArray(msg.content)) {
+          for (const block of msg.content) {
+            if (typeof block === "string") {
+              console.log(`[${timestamp}] [THINKING] ${block}`);
+            } else if (block && typeof block === "object") {
+              if (block.type === "text") {
+                console.log(`[${timestamp}] [THINKING] ${(block as Record<string, unknown>).text || ""}`);
+              } else if (block.type === "thinking") {
+                console.log(`[${timestamp}] [THINKING] ${(block as Record<string, unknown>).thinking || ""}`);
+              } else if (block.type === "tool_use") {
+                const toolBlock = block as Record<string, unknown>;
+                const toolName = toolBlock.name || "unknown";
+                const toolInput = toolBlock.input ? JSON.stringify(toolBlock.input, null, 2) : "{}";
+                console.log(`[${timestamp}] [TOOL CALL] ${toolName}`);
+                console.log(`[${timestamp}] [TOOL INPUT]\n${toolInput}`);
+              }
+            }
+          }
+        }
+        break;
+
+      case "tool_use":
+        console.log(`[${timestamp}] [TOOL CALL] ${(msg as Record<string, unknown>).name || "unknown"}`);
+        if (msg.input) {
+          const input = JSON.stringify(msg.input, null, 2);
+          // Truncate very long inputs
+          const truncated = input.length > 500 ? input.slice(0, 500) + "... (truncated)" : input;
+          console.log(`[${timestamp}] [TOOL INPUT] ${truncated}`);
+        }
+        break;
+
+      case "tool_result":
+        const resultStr = typeof msg.result === "string" ? msg.result : JSON.stringify(msg.result, null, 2);
+        const truncatedResult = resultStr.length > 500 ? resultStr.slice(0, 500) + "... (truncated)" : resultStr;
+        console.log(`[${timestamp}] [TOOL RESULT] ${truncatedResult}`);
+        break;
+
+      case "result":
+        if (msg.subtype === "success") {
+          const res = typeof msg.result === "string" ? msg.result : JSON.stringify(msg.result, null, 2);
+          console.log(`[${timestamp}] [RESULT] ${res.slice(0, 1000)}${res.length > 1000 ? "... (truncated)" : ""}`);
+        }
+        break;
+
+      case "error":
+        console.error(`[${timestamp}] [ERROR] ${JSON.stringify(msg)}`);
+        break;
+
+      default:
+        // Log unknown message types at debug level
+        if (process.env.DEBUG_AGENT) {
+          console.log(`[${timestamp}] [DEBUG] Unknown message type: ${msg.type}`);
+          console.log(JSON.stringify(msg, null, 2));
+        }
+    }
   }
 
   /**
