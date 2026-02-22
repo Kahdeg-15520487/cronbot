@@ -3,6 +3,7 @@ using System.Text.Json;
 using CronBot.Domain.Entities;
 using CronBot.Domain.Enums;
 using CronBot.Infrastructure.Data;
+using CronBot.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using ModelContextProtocol.Server;
 using TaskEntity = CronBot.Domain.Entities.Task;
@@ -718,4 +719,149 @@ public static class KanbanTools
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true
     };
+
+    // ========================================
+    // PULL REQUEST TOOLS
+    // ========================================
+
+    [McpServerTool, Description("Create a pull request for a task's branch. This should be called after pushing your feature branch to remote.")]
+    public static async Task<string> CreatePullRequest(
+        AppDbContext db,
+        GitService gitService,
+        [Description("The task ID")] Guid taskId,
+        [Description("Optional PR title (defaults to task title)")] string? title = null,
+        [Description("Optional PR body/description")] string? body = null,
+        [Description("Base branch to merge into (defaults to main)")] string baseBranch = "main")
+    {
+        var task = await db.Tasks.FindAsync(taskId);
+        if (task == null)
+        {
+            return JsonSerializer.Serialize(new { error = "Task not found" }, JsonOptions);
+        }
+
+        var project = await db.Projects.FindAsync(task.ProjectId);
+        if (project == null || string.IsNullOrEmpty(project.InternalRepoUrl))
+        {
+            return JsonSerializer.Serialize(new { error = "Project has no git repository configured" }, JsonOptions);
+        }
+
+        if (string.IsNullOrEmpty(task.GitBranch))
+        {
+            return JsonSerializer.Serialize(new { error = "Task has no branch set. Create and set a branch first using SetTaskBranch." }, JsonOptions);
+        }
+
+        // Extract owner and repo from InternalRepoUrl
+        // URL format: http://gitea:3000/owner/repo-name
+        var repoUri = new Uri(project.InternalRepoUrl);
+        var pathParts = repoUri.AbsolutePath.Trim('/').Split('/');
+        if (pathParts.Length < 2)
+        {
+            return JsonSerializer.Serialize(new { error = "Invalid repository URL format" }, JsonOptions);
+        }
+
+        var owner = pathParts[0];
+        var repoName = pathParts[1];
+
+        var prTitle = title ?? $"#{task.Number}: {task.Title}";
+        var prBody = body ?? $"## Task\n\n- **Task #{task.Number}**: {task.Title}\n- **Branch**: {task.GitBranch}\n\n## Description\n\n{task.Description ?? "No description provided"}";
+
+        var pr = await gitService.CreatePullRequestAsync(
+            owner,
+            repoName,
+            prTitle,
+            task.GitBranch,
+            baseBranch,
+            prBody);
+
+        if (pr == null)
+        {
+            return JsonSerializer.Serialize(new { error = "Failed to create pull request in Gitea" }, JsonOptions);
+        }
+
+        // Update task with PR info
+        task.GitPrId = pr.Number;
+        task.GitPrUrl = pr.HtmlUrl;
+        task.Status = TaskStatusEnum.Review; // Move to Review status
+
+        // Log the PR creation
+        var log = new TaskLog
+        {
+            TaskId = taskId,
+            Type = TaskLogType.PullRequestCreated,
+            Level = TaskLogLevel.Info,
+            Message = $"Created pull request #{pr.Number}: {prTitle}",
+            Details = pr.HtmlUrl,
+            GitBranch = task.GitBranch
+        };
+
+        db.TaskLogs.Add(log);
+        await db.SaveChangesAsync();
+
+        return JsonSerializer.Serialize(new
+        {
+            success = true,
+            pr.Number,
+            pr.Title,
+            pr.HtmlUrl,
+            HeadBranch = task.GitBranch,
+            BaseBranch = baseBranch,
+            TaskStatus = "Review",
+            message = $"Pull request #{pr.Number} created. Task moved to Review status."
+        }, JsonOptions);
+    }
+
+    [McpServerTool, Description("Get the pull request status for a task.")]
+    public static async Task<string> GetTaskPullRequest(
+        AppDbContext db,
+        GitService gitService,
+        [Description("The task ID")] Guid taskId)
+    {
+        var task = await db.Tasks.FindAsync(taskId);
+        if (task == null)
+        {
+            return JsonSerializer.Serialize(new { error = "Task not found" }, JsonOptions);
+        }
+
+        if (!task.GitPrId.HasValue)
+        {
+            return JsonSerializer.Serialize(new { message = "Task has no pull request", hasPr = false }, JsonOptions);
+        }
+
+        var project = await db.Projects.FindAsync(task.ProjectId);
+        if (project == null || string.IsNullOrEmpty(project.InternalRepoUrl))
+        {
+            return JsonSerializer.Serialize(new { error = "Project has no git repository configured" }, JsonOptions);
+        }
+
+        // Extract owner and repo from InternalRepoUrl
+        var repoUri = new Uri(project.InternalRepoUrl);
+        var pathParts = repoUri.AbsolutePath.Trim('/').Split('/');
+        if (pathParts.Length < 2)
+        {
+            return JsonSerializer.Serialize(new { error = "Invalid repository URL format" }, JsonOptions);
+        }
+
+        var owner = pathParts[0];
+        var repoName = pathParts[1];
+
+        var pr = await gitService.GetPullRequestAsync(owner, repoName, task.GitPrId.Value);
+
+        if (pr == null)
+        {
+            return JsonSerializer.Serialize(new { error = "Pull request not found in Gitea" }, JsonOptions);
+        }
+
+        return JsonSerializer.Serialize(new
+        {
+            hasPr = true,
+            task.GitPrId,
+            pr.Title,
+            pr.State,
+            pr.HtmlUrl,
+            HeadBranch = task.GitBranch,
+            Merged = pr.Merged,
+            Mergeable = pr.Mergeable,
+            task.GitPrUrl
+        }, JsonOptions);
+    }
 }

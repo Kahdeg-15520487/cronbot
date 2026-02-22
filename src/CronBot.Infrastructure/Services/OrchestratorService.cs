@@ -99,7 +99,7 @@ public class OrchestratorService
             var containerName = $"cronbot-agent-{agent.Id.ToString()[..8]}";
 
             // Create and start container
-            var containerId = await _docker.CreateAgentContainerAsync(
+            var containerResult = await _docker.CreateAgentContainerAsync(
                 containerName,
                 agent.Id,
                 projectId,
@@ -117,17 +117,18 @@ public class OrchestratorService
                 cancellationToken
             );
 
-            if (!string.IsNullOrEmpty(containerId))
+            if (!string.IsNullOrEmpty(containerResult.ContainerId))
             {
                 // Update agent with container info
-                agent.ContainerId = containerId;
+                agent.ContainerId = containerResult.ContainerId;
                 agent.ContainerName = containerName;
+                agent.ImageHash = containerResult.ImageHash;
                 agent.Status = Domain.Enums.AgentStatus.Idle;
                 await _context.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation(
-                    "Spawned agent {AgentId} for project {ProjectId} in container {ContainerName}",
-                    agent.Id, projectId, containerName);
+                    "Spawned agent {AgentId} for project {ProjectId} in container {ContainerName} (image: {ImageHash})",
+                    agent.Id, projectId, containerName, containerResult.ImageHash);
             }
 
             return agent;
@@ -276,6 +277,123 @@ public class OrchestratorService
         }
 
         return await _docker.GetContainerLogsAsync(agent.ContainerId, tail, cancellationToken);
+    }
+
+    /// <summary>
+    /// Restart an agent container.
+    /// </summary>
+    public async Task RestartAgentAsync(Guid agentId, CancellationToken cancellationToken = default)
+    {
+        var agent = await _context.Agents.FindAsync(agentId);
+        if (agent == null)
+        {
+            throw new InvalidOperationException($"Agent {agentId} not found");
+        }
+
+        if (string.IsNullOrEmpty(agent.ContainerId))
+        {
+            throw new InvalidOperationException($"Agent {agentId} has no container");
+        }
+
+        _logger.LogInformation("Restarting agent {AgentId} container {ContainerId}", agentId, agent.ContainerId);
+
+        await _docker.RestartContainerAsync(agent.ContainerId, cancellationToken);
+
+        agent.LastActivityAt = DateTimeOffset.UtcNow;
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Update an agent (rebuild container with latest code).
+    /// </summary>
+    public async Task UpdateAgentAsync(Guid agentId, CancellationToken cancellationToken = default)
+    {
+        var agent = await _context.Agents.FindAsync(agentId);
+        if (agent == null)
+        {
+            throw new InvalidOperationException($"Agent {agentId} not found");
+        }
+
+        _logger.LogInformation("Updating agent {AgentId}", agentId);
+
+        // Stop and remove existing container
+        if (!string.IsNullOrEmpty(agent.ContainerId))
+        {
+            try
+            {
+                await _docker.StopContainerAsync(agent.ContainerId, cancellationToken);
+                await _docker.RemoveContainerAsync(agent.ContainerId, force: true, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to remove old container for agent {AgentId}", agentId);
+            }
+        }
+
+        // Get project info
+        var project = await _context.Projects.FindAsync(agent.ProjectId);
+        if (project == null)
+        {
+            throw new InvalidOperationException($"Project {agent.ProjectId} not found");
+        }
+
+        // Get configuration (same as SpawnAgentAsync)
+        var apiKey = _configuration["Anthropic:ApiKey"]
+            ?? throw new InvalidOperationException("ANTHROPIC_API_KEY not configured");
+        var baseUrl = _configuration["Anthropic:BaseUrl"] ?? "";
+        var model = _configuration["Anthropic:Model"];
+        var maxTokensStr = _configuration["Anthropic:MaxTokens"];
+        int? maxTokens = string.IsNullOrEmpty(maxTokensStr) ? null : int.Parse(maxTokensStr);
+        var kanbanUrl = _configuration["Services:KanbanUrl"] ?? "http://api:8080/api";
+
+        // Get Gitea configuration for git branching workflow
+        var giteaUrl = _configuration["Gitea:Url"] ?? "http://gitea:3000";
+        var giteaUsername = _configuration["Gitea:Username"] ?? "cronbot";
+        var giteaPassword = _configuration["Gitea:Password"] ?? "cronbot123";
+        var giteaToken = _configuration["Gitea:Token"] ?? "";
+
+        // Build repo URL if project uses internal git
+        string? repoUrl = null;
+        if (project.GitMode == Domain.Enums.GitMode.Internal && !string.IsNullOrEmpty(project.InternalRepoUrl))
+        {
+            var repoUri = new Uri(project.InternalRepoUrl);
+            var credentialPart = !string.IsNullOrEmpty(giteaToken)
+                ? $"oauth2:{giteaToken}"
+                : $"{giteaUsername}:{giteaPassword}";
+            repoUrl = $"{repoUri.Scheme}://{credentialPart}@{repoUri.Host}:{repoUri.Port}{repoUri.PathAndQuery}.git";
+        }
+
+        // Create new container with same name
+        var containerName = agent.ContainerName ?? $"cronbot-agent-{agent.Id.ToString()[..8]}";
+
+        var containerResult = await _docker.CreateAgentContainerAsync(
+            containerName,
+            agent.Id,
+            agent.ProjectId,
+            project.AutonomyLevel,
+            apiKey,
+            baseUrl,
+            model,
+            maxTokens,
+            kanbanUrl,
+            giteaUrl,
+            giteaUsername,
+            giteaPassword,
+            giteaToken,
+            repoUrl,
+            cancellationToken
+        );
+
+        // Update agent record
+        agent.ContainerId = containerResult.ContainerId ?? string.Empty;
+        agent.ImageHash = containerResult.ImageHash;
+        agent.StartedAt = DateTimeOffset.UtcNow;
+        agent.LastActivityAt = DateTimeOffset.UtcNow;
+        agent.Status = Domain.Enums.AgentStatus.Working;
+        agent.StatusMessage = "Updated and restarted";
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Agent {AgentId} updated successfully with new container {ContainerId} (image: {ImageHash})", agentId, containerResult.ContainerId, containerResult.ImageHash);
     }
 
     /// <summary>

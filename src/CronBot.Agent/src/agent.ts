@@ -179,9 +179,10 @@ ${gitConfig}
    - Execute the work requested in the task
    - When complete:
      - Commit your changes with a descriptive message
-     - Push the branch to remote
-     - Update the task with the branch name and any PR URL
-     - Move the task to "Done" status
+     - PUSH YOUR BRANCH to remote: \`git push -u origin HEAD\`
+     - **Create a Pull Request** using the \`create_pull_request\` MCP tool
+     - This will automatically move the task to "Review" status
+     - DO NOT merge the PR yourself - wait for human review and approval
    - If blocked, move to "Blocked" status and add a comment explaining why
 
 4. **Important**:
@@ -220,16 +221,22 @@ Start by checking for the next available task.`;
     }
 
     return `   - **Git Workflow (MANDATORY)**:
-     a. Initialize git if not already done: \`git init\`
-     b. Configure git identity: \`git config user.email "agent@cronbot.local"\` and \`git config user.name "CronBot Agent"\`
-     c. Clone the repository if needed (or ensure you're in the repo directory)
+     a. First, check if the workspace has a git repo: run \`ls -la\` and check for .git folder
+     b. If NO .git folder, CLONE THE REPOSITORY FIRST:
+        \`git clone ${repoUrl} .\` (note the dot at the end to clone into current directory)
+     c. Configure git identity: \`git config user.email "agent@cronbot.local"\` and \`git config user.name "CronBot Agent"\`
      d. Fetch latest: \`git fetch origin\`
-     e. Create a feature branch for this task: \`git checkout -b task/TASK-NUMBER-TASK-SLUG\`
-        - Branch naming: use task number from the task data (e.g., task/42-add-login-button)
+     e. Checkout main branch and pull latest: \`git checkout main && git pull origin main\`
+     f. **NEVER COMMIT DIRECTLY TO MAIN** - Create a feature branch:
+        \`git checkout -b task/TASK-NUMBER-TASK-SLUG\`
+        - Branch naming: use task number from the task data (e.g., task/1-setup-project)
         - If task type is "bug", use "fix/" prefix instead (e.g., fix/42-fix-login-crash)
-     f. Make sure you're on the new branch before making changes: \`git branch\`
-     g. Stage changes as you work: \`git add .\`
-     h. Commit frequently with meaningful messages: \`git commit -m "descriptive message"\``;
+     g. **IMPORTANT**: Set the branch on the task using \`set_task_branch\` MCP tool
+     h. Make sure you're on the new branch before making changes: \`git branch\`
+     i. Stage changes as you work: \`git add .\`
+     j. Commit frequently with meaningful messages: \`git commit -m "descriptive message"\`
+     k. When done, PUSH YOUR FEATURE BRANCH: \`git push -u origin HEAD\`
+     l. Create a pull request using \`create_pull_request\` MCP tool - this moves task to Review`;
   }
 
   /**

@@ -19,15 +19,18 @@ public class ProjectsController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly GitService _gitService;
+    private readonly OrchestratorService _orchestrator;
     private readonly ILogger<ProjectsController> _logger;
 
     public ProjectsController(
         AppDbContext context,
         GitService gitService,
+        OrchestratorService orchestrator,
         ILogger<ProjectsController> logger)
     {
         _context = context;
         _gitService = gitService;
+        _orchestrator = orchestrator;
         _logger = logger;
     }
 
@@ -185,6 +188,41 @@ public class ProjectsController : ControllerBase
                     project.Id);
                 // Continue without Gitea repo - project is still created
             }
+        }
+
+        // Auto-create initial task to populate kanban board
+        var initialTask = new TaskEntity
+        {
+            ProjectId = project.Id,
+            Number = 1,
+            Title = "Set up project structure",
+            Description = "Initialize the project with basic structure and configuration. Review project requirements and plan the implementation.",
+            Type = TaskType.Task,
+            Status = TaskStatus.Sprint, // Put in Sprint so agent picks it up
+            AssigneeType = "Agent"
+        };
+        _context.Tasks.Add(initialTask);
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation(
+            "Created initial task for project {ProjectId}",
+            project.Id);
+
+        // Auto-spawn an agent for the project
+        try
+        {
+            var agent = await _orchestrator.SpawnAgentAsync(project.Id, $"{project.Name}-Agent-1");
+            _logger.LogInformation(
+                "Auto-spawned agent {AgentId} for project {ProjectId}",
+                agent.Id, project.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to auto-spawn agent for project {ProjectId}",
+                project.Id);
+            // Continue without agent - project is still created
         }
 
         var response = new ProjectResponse

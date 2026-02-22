@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { agentsApi, projectsApi, Agent } from '@/lib/api';
 import { Sidebar } from '@/components/Sidebar';
-import { Bot, Plus, Play, Square, RefreshCw, Activity, Cpu, HardDrive, Trash2, FileText, X } from 'lucide-react';
+import { Bot, Plus, Play, Square, RefreshCw, Activity, Cpu, HardDrive, Trash2, FileText, X, ArrowUpCircle, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
 import Link from 'next/link';
 import clsx from 'clsx';
@@ -177,6 +177,20 @@ function AgentCard({ agent, projects }: { agent: Agent; projects: { id: string; 
     },
   });
 
+  const restartMutation = useMutation({
+    mutationFn: () => agentsApi.restart(agent.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: () => agentsApi.update(agent.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: () => agentsApi.delete(agent.id),
     onSuccess: () => {
@@ -193,9 +207,16 @@ function AgentCard({ agent, projects }: { agent: Agent; projects: { id: string; 
           <div className={clsx('w-2 h-2 rounded-full', colors.dot)} />
           <span className="text-sm font-medium text-gray-700 capitalize">{agent.status}</span>
         </div>
-        <span className="text-xs text-gray-500 font-mono">
-          {agent.containerName || agent.id.slice(0, 8)}
-        </span>
+        <div className="text-right">
+          <span className="text-xs text-gray-500 font-mono block">
+            {agent.containerName || agent.id.slice(0, 8)}
+          </span>
+          {agent.imageHash && (
+            <span className="text-xs text-gray-400 font-mono" title="Docker Image Hash">
+              img:{agent.imageHash}
+            </span>
+          )}
+        </div>
       </div>
 
       <Link href={`/projects/${agent.projectId}`} className="block mb-3">
@@ -235,7 +256,7 @@ function AgentCard({ agent, projects }: { agent: Agent; projects: { id: string; 
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <button
           onClick={() => setShowLogs(true)}
           className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
@@ -243,34 +264,60 @@ function AgentCard({ agent, projects }: { agent: Agent; projects: { id: string; 
           <FileText className="w-3 h-3" />
           Logs
         </button>
+        {(agent.status === 'working' || agent.status === 'idle' || agent.status === 'error') && (
+          <button
+            onClick={() => restartMutation.mutate()}
+            disabled={restartMutation.isPending}
+            className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors disabled:opacity-50"
+          >
+            <RotateCcw className="w-3 h-3" />
+            Restart
+          </button>
+        )}
+        {(agent.status === 'working' || agent.status === 'idle' || agent.status === 'error') && (
+          <button
+            onClick={() => updateMutation.mutate()}
+            disabled={updateMutation.isPending}
+            className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 text-sm bg-purple-100 text-purple-700 rounded hover:bg-purple-200 transition-colors disabled:opacity-50"
+          >
+            <ArrowUpCircle className="w-3 h-3" />
+            Update
+          </button>
+        )}
         {agent.status === 'working' && (
           <button
             onClick={() => terminateMutation.mutate()}
             disabled={terminateMutation.isPending}
-            className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 text-sm bg-orange-100 text-orange-700 rounded hover:bg-orange-200 transition-colors disabled:opacity-50"
           >
             <Square className="w-3 h-3" />
-            Terminate
+            Stop
           </button>
         )}
         {(agent.status === 'paused' || agent.status === 'blocked') && (
-          <button className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors">
+          <button
+            onClick={() => restartMutation.mutate()}
+            disabled={restartMutation.isPending}
+            className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors disabled:opacity-50"
+          >
             <RefreshCw className="w-3 h-3" />
             Resume
           </button>
         )}
-        <button
-          onClick={() => {
-            if (confirm('Are you sure you want to delete this agent?')) {
-              deleteMutation.mutate();
-            }
-          }}
-          disabled={deleteMutation.isPending}
-          className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors disabled:opacity-50"
-        >
-          <Trash2 className="w-3 h-3" />
-          Delete
-        </button>
+        {(agent.status === 'terminated' || agent.status === 'error') && (
+          <button
+            onClick={() => {
+              if (confirm('Are you sure you want to delete this agent?')) {
+                deleteMutation.mutate();
+              }
+            }}
+            disabled={deleteMutation.isPending}
+            className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors disabled:opacity-50"
+          >
+            <Trash2 className="w-3 h-3" />
+            Delete
+          </button>
+        )}
       </div>
 
       <p className="text-xs text-gray-400 mt-3">

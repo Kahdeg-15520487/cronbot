@@ -152,6 +152,7 @@ export interface Agent {
   currentTaskId?: string;
   containerId?: string;
   containerName?: string;
+  imageHash?: string;
   status: string;
   statusMessage?: string;
   cpuUsagePercent?: number;
@@ -269,6 +270,7 @@ interface RawAgent {
   currentTaskId?: string;
   containerId?: string;
   containerName?: string;
+  imageHash?: string;
   status: number | string;
   statusMessage?: string;
   cpuUsagePercent?: number;
@@ -406,6 +408,14 @@ export const agentsApi = {
     data: transformAgent(res.data)
   })),
   terminate: (id: string) => api.post<RawAgent>(`/agents/${id}/terminate`).then(res => ({
+    ...res,
+    data: transformAgent(res.data)
+  })),
+  restart: (id: string) => api.post<RawAgent>(`/agents/${id}/restart`).then(res => ({
+    ...res,
+    data: transformAgent(res.data)
+  })),
+  update: (id: string) => api.post<RawAgent>(`/agents/${id}/update`).then(res => ({
     ...res,
     data: transformAgent(res.data)
   })),

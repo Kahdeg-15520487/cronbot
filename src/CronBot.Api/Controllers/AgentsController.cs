@@ -39,6 +39,7 @@ public class AgentsController : ControllerBase
         public Guid? CurrentTaskId { get; init; }
         public string? ContainerId { get; init; }
         public string? ContainerName { get; init; }
+        public string? ImageHash { get; init; }
         public AgentStatus Status { get; init; }
         public string? StatusMessage { get; init; }
         public decimal? CpuUsagePercent { get; init; }
@@ -85,6 +86,7 @@ public class AgentsController : ControllerBase
                 CurrentTaskId = a.CurrentTaskId,
                 ContainerId = a.ContainerId,
                 ContainerName = a.ContainerName,
+                ImageHash = a.ImageHash,
                 Status = a.Status,
                 StatusMessage = a.StatusMessage,
                 CpuUsagePercent = a.CpuUsagePercent,
@@ -123,6 +125,7 @@ public class AgentsController : ControllerBase
             CurrentTaskId = agent.CurrentTaskId,
             ContainerId = agent.ContainerId,
             ContainerName = agent.ContainerName,
+            ImageHash = agent.ImageHash,
             Status = agent.Status,
             StatusMessage = agent.StatusMessage,
             CpuUsagePercent = agent.CpuUsagePercent,
@@ -160,6 +163,7 @@ public class AgentsController : ControllerBase
                 CurrentTaskId = a.CurrentTaskId,
                 ContainerId = a.ContainerId,
                 ContainerName = a.ContainerName,
+                ImageHash = a.ImageHash,
                 Status = a.Status,
                 StatusMessage = a.StatusMessage,
                 CpuUsagePercent = a.CpuUsagePercent,
@@ -215,6 +219,7 @@ public class AgentsController : ControllerBase
                 CurrentTaskId = agent.CurrentTaskId,
                 ContainerId = agent.ContainerId,
                 ContainerName = agent.ContainerName,
+                ImageHash = agent.ImageHash,
                 Status = agent.Status,
                 StatusMessage = agent.StatusMessage,
                 CpuUsagePercent = agent.CpuUsagePercent,
@@ -271,6 +276,7 @@ public class AgentsController : ControllerBase
             CurrentTaskId = agent.CurrentTaskId,
             ContainerId = agent.ContainerId,
             ContainerName = agent.ContainerName,
+            ImageHash = agent.ImageHash,
             Status = agent.Status,
             StatusMessage = agent.StatusMessage,
             CpuUsagePercent = agent.CpuUsagePercent,
@@ -339,6 +345,102 @@ public class AgentsController : ControllerBase
         {
             _logger.LogWarning(ex, "Failed to get logs for agent {AgentId}", id);
             return Ok($"Error retrieving logs: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Restarts an agent container.
+    /// </summary>
+    [HttpPost("{id}/restart")]
+    [ProducesResponseType(typeof(AgentResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<AgentResponse>> RestartAgent(Guid id)
+    {
+        var agent = await _context.Agents.FindAsync(id);
+
+        if (agent == null)
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            await _orchestrator.RestartAgentAsync(id);
+            agent.Status = AgentStatus.Working;
+            agent.StatusMessage = "Agent restarted";
+            await _context.SaveChangesAsync();
+
+            return Ok(new AgentResponse
+            {
+                Id = agent.Id,
+                ProjectId = agent.ProjectId,
+                Name = agent.Name,
+                CurrentTaskId = agent.CurrentTaskId,
+                ContainerId = agent.ContainerId,
+                ContainerName = agent.ContainerName,
+                Status = agent.Status,
+                StatusMessage = agent.StatusMessage,
+                CpuUsagePercent = agent.CpuUsagePercent,
+                MemoryUsageMb = agent.MemoryUsageMb,
+                StartedAt = agent.StartedAt,
+                LastActivityAt = agent.LastActivityAt,
+                TasksCompleted = agent.TasksCompleted,
+                CommitsMade = agent.CommitsMade,
+                AutonomyLevel = agent.AutonomyLevel
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to restart agent {AgentId}", id);
+            return BadRequest($"Failed to restart agent: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Updates an agent (pulls latest code and restarts).
+    /// </summary>
+    [HttpPost("{id}/update")]
+    [ProducesResponseType(typeof(AgentResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<AgentResponse>> UpdateAgent(Guid id)
+    {
+        var agent = await _context.Agents.FindAsync(id);
+
+        if (agent == null)
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            await _orchestrator.UpdateAgentAsync(id);
+            agent.Status = AgentStatus.Working;
+            agent.StatusMessage = "Agent updated and restarted";
+            await _context.SaveChangesAsync();
+
+            return Ok(new AgentResponse
+            {
+                Id = agent.Id,
+                ProjectId = agent.ProjectId,
+                Name = agent.Name,
+                CurrentTaskId = agent.CurrentTaskId,
+                ContainerId = agent.ContainerId,
+                ContainerName = agent.ContainerName,
+                Status = agent.Status,
+                StatusMessage = agent.StatusMessage,
+                CpuUsagePercent = agent.CpuUsagePercent,
+                MemoryUsageMb = agent.MemoryUsageMb,
+                StartedAt = agent.StartedAt,
+                LastActivityAt = agent.LastActivityAt,
+                TasksCompleted = agent.TasksCompleted,
+                CommitsMade = agent.CommitsMade,
+                AutonomyLevel = agent.AutonomyLevel
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update agent {AgentId}", id);
+            return BadRequest($"Failed to update agent: {ex.Message}");
         }
     }
 }

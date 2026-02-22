@@ -8,6 +8,15 @@ using System.IO;
 namespace CronBot.Infrastructure.Services;
 
 /// <summary>
+/// Result of creating an agent container.
+/// </summary>
+public class ContainerCreationResult
+{
+    public string? ContainerId { get; set; }
+    public string? ImageHash { get; set; }
+}
+
+/// <summary>
 /// Client for interacting with Docker API.
 /// </summary>
 public class DockerClientService : IDisposable
@@ -28,7 +37,7 @@ public class DockerClientService : IDisposable
     /// <summary>
     /// Create and start a container for an agent.
     /// </summary>
-    public async Task<string?> CreateAgentContainerAsync(
+    public async Task<ContainerCreationResult> CreateAgentContainerAsync(
         string name,
         Guid agentId,
         Guid projectId,
@@ -48,17 +57,22 @@ public class DockerClientService : IDisposable
         try
         {
             var containerName = $"cronbot-agent-{agentId.ToString()[..8]}";
+            var imageName = "cronbot-agent:latest";
 
             // Check if container already exists
             var existing = await GetContainerByNameAsync(containerName, cancellationToken);
             if (existing != null)
             {
                 _logger.LogWarning("Container {ContainerName} already exists", containerName);
-                return existing.ID;
+                return new ContainerCreationResult
+                {
+                    ContainerId = existing.ID,
+                    ImageHash = existing.ImageID?.Replace("sha256:", "")?[..12] ?? "unknown"
+                };
             }
 
-            // Pull image first
-            await EnsureImageExistsAsync("cronbot-agent", "latest", cancellationToken);
+            // Pull image first and get the image hash
+            var imageHash = await EnsureImageExistsAsync("cronbot-agent", "latest", cancellationToken);
 
             var environment = new List<string>
             {
@@ -93,7 +107,7 @@ public class DockerClientService : IDisposable
             var createParams = new CreateContainerParameters
             {
                 Name = containerName,
-                Image = "cronbot-agent:latest",
+                Image = imageName,
                 Env = environment,
                 Labels = labels,
                 HostConfig = new HostConfig
@@ -125,7 +139,11 @@ public class DockerClientService : IDisposable
 
             _logger.LogInformation("Created and started container {ContainerName} for agent {AgentId}", containerName, agentId);
 
-            return container.ID;
+            return new ContainerCreationResult
+            {
+                ContainerId = container.ID,
+                ImageHash = imageHash
+            };
         }
         catch (Exception ex)
         {
@@ -243,6 +261,28 @@ public class DockerClientService : IDisposable
     }
 
     /// <summary>
+    /// Restart a container.
+    /// </summary>
+    public async Task<bool> RestartContainerAsync(string containerId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await _client.Containers.RestartContainerAsync(containerId, new ContainerRestartParameters
+            {
+                WaitBeforeKillSeconds = 10
+            }, cancellationToken);
+
+            _logger.LogInformation("Restarted container {ContainerId}", containerId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to restart container {ContainerId}", containerId);
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Get container logs.
     /// </summary>
     public async Task<string> GetContainerLogsAsync(string containerId, int tail = 100, CancellationToken cancellationToken = default)
@@ -277,8 +317,9 @@ public class DockerClientService : IDisposable
 
     /// <summary>
     /// Ensure an image exists locally. Build from source if not found, pull from registry as fallback.
+    /// Returns the short image hash (first 12 characters).
     /// </summary>
-    private async Task EnsureImageExistsAsync(string image, string tag, CancellationToken cancellationToken)
+    private async Task<string> EnsureImageExistsAsync(string image, string tag, CancellationToken cancellationToken)
     {
         try
         {
@@ -293,18 +334,19 @@ public class DockerClientService : IDisposable
 
             if (images.Count > 0)
             {
-                _logger.LogDebug("Image {Image}:{Tag} already exists locally", image, tag);
-                return;
+                var existingHash = images[0].ID?.Replace("sha256:", "")?[..12] ?? "unknown";
+                _logger.LogDebug("Image {Image}:{Tag} already exists locally (hash: {Hash})", image, tag, existingHash);
+                return existingHash;
             }
 
             _logger.LogInformation("Image {Image}:{Tag} not found locally", image, tag);
 
             // Try to build from local source first
-            var buildSuccess = await TryBuildImageAsync(image, tag, cancellationToken);
-            if (buildSuccess)
+            var buildHash = await TryBuildImageAsync(image, tag, cancellationToken);
+            if (!string.IsNullOrEmpty(buildHash))
             {
-                _logger.LogInformation("Successfully built image {Image}:{Tag}", image, tag);
-                return;
+                _logger.LogInformation("Successfully built image {Image}:{Tag} (hash: {Hash})", image, tag, buildHash);
+                return buildHash;
             }
 
             // Fallback: try to pull from registry
@@ -321,7 +363,21 @@ public class DockerClientService : IDisposable
                 }),
                 cancellationToken);
 
-            _logger.LogInformation("Successfully pulled image {Image}:{Tag}", image, tag);
+            // Get the hash of the pulled image
+            images = await _client.Images.ListImagesAsync(new ImagesListParameters
+            {
+                Filters = new Dictionary<string, IDictionary<string, bool>>
+                {
+                    ["reference"] = new Dictionary<string, bool> { [$"{image}:{tag}"] = true }
+                }
+            }, cancellationToken);
+
+            var pulledHash = images.Count > 0
+                ? images[0].ID?.Replace("sha256:", "")?[..12] ?? "unknown"
+                : "unknown";
+
+            _logger.LogInformation("Successfully pulled image {Image}:{Tag} (hash: {Hash})", image, tag, pulledHash);
+            return pulledHash;
         }
         catch (Exception ex)
         {
@@ -332,8 +388,9 @@ public class DockerClientService : IDisposable
 
     /// <summary>
     /// Try to build the agent image from local source.
+    /// Returns the image hash if successful, null otherwise.
     /// </summary>
-    private async Task<bool> TryBuildImageAsync(string image, string tag, CancellationToken cancellationToken)
+    private async Task<string?> TryBuildImageAsync(string image, string tag, CancellationToken cancellationToken)
     {
         // Look for the agent source directory
         // Try multiple possible locations
@@ -359,7 +416,7 @@ public class DockerClientService : IDisposable
         if (buildContextPath == null)
         {
             _logger.LogWarning("Could not find agent source directory for building. Tried: {Paths}", string.Join(", ", possiblePaths));
-            return false;
+            return null;
         }
 
         _logger.LogInformation("Building image {Image}:{Tag} from {Path}", image, tag, buildContextPath);
@@ -407,7 +464,7 @@ public class DockerClientService : IDisposable
             // Cleanup tar file
             try { File.Delete(tarPath); } catch { /* ignore */ }
 
-            // Verify image was created
+            // Verify image was created and get hash
             var images = await _client.Images.ListImagesAsync(new ImagesListParameters
             {
                 Filters = new Dictionary<string, IDictionary<string, bool>>
@@ -416,12 +473,16 @@ public class DockerClientService : IDisposable
                 }
             }, cancellationToken);
 
-            return images.Count > 0;
+            if (images.Count > 0)
+            {
+                return images[0].ID?.Replace("sha256:", "")?[..12] ?? "unknown";
+            }
+            return null;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to build image {Image}:{Tag}", image, tag);
-            return false;
+            return null;
         }
     }
 

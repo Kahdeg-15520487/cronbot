@@ -43,6 +43,11 @@ public class Agent : Entity
     public string? ContainerName { get; set; }
 
     /// <summary>
+    /// Docker image hash/version the agent is running.
+    /// </summary>
+    public string? ImageHash { get; set; }
+
+    /// <summary>
     /// Current status of the agent.
     /// </summary>
     public AgentStatus Status { get; set; } = AgentStatus.Idle;
