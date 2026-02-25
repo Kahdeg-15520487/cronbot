@@ -287,3 +287,5 @@ Thumbs.db
 src/CronBot.Agent/dist/
 src/CronBot.Agent/test-state/
 src/CronBot.Agent/test-workspace/
+
+.claude/
